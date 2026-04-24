@@ -38,6 +38,7 @@ export const DoctorsFormPage = (): JSX.Element => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast, updateToast } = useToast();
+  const doctorFormId = "doctor-form";
   const params = useParams();
   const doctorId = params.doctor_id === undefined ? null : Number(params.doctor_id);
   const isEditMode = doctorId !== null;
@@ -150,6 +151,7 @@ export const DoctorsFormPage = (): JSX.Element => {
   const hasSpecializations = specializations.length > 0;
   const canSave = hasSpecializations && !mutation.isPending && !isSubmitting;
   const selectedSpecializationName = specializations.find((specialization) => specialization.specialization_id === selectedSpecializationId)?.specialization_display_name ?? doctorQuery.data?.specialization_display_name ?? "";
+  const shouldRenderServicesSection = isEditMode && doctorQuery.data !== undefined && selectedSpecializationId > 0;
 
   const submitAfterConfirmation = (): void => {
     if (pendingValues === null) {
@@ -244,8 +246,8 @@ export const DoctorsFormPage = (): JSX.Element => {
   }
 
   return (
-    <section className="space-y-6">
-      <div className="panel p-6 md:p-8">
+    <section>
+      <div className="panel p-5 md:p-6">
       {showConfirmOverlay && overlayRoot !== null ? createPortal(
         <div className="fixed inset-0 z-[115] flex items-center justify-center bg-slate-950/48 px-4 backdrop-blur-[8px]">
           <div className={`w-full max-w-md rounded-[32px] border border-emerald-200 bg-white/96 px-7 py-8 text-center shadow-2xl shadow-slate-900/30 ring-1 ring-slate-200/90 transition-all duration-300 ${isConfirmOverlayVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-95 opacity-0"}`}>
@@ -291,10 +293,10 @@ export const DoctorsFormPage = (): JSX.Element => {
         overlayRoot,
       ) : null}
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <span className="badge-soft">{isEditMode ? "Editare medic" : "Medic nou"}</span>
-          <h2 className="mt-4">{isEditMode ? "Actualizează datele medicului" : "Adaugă un medic nou"}</h2>
+          <h2 className="mt-3">{isEditMode ? "Actualizează datele medicului" : "Adaugă un medic nou"}</h2>
         </div>
 
         <Link className="button-secondary shrink-0 whitespace-nowrap gap-2" to="/doctori">
@@ -304,7 +306,7 @@ export const DoctorsFormPage = (): JSX.Element => {
       </div>
 
       {!hasSpecializations ? (
-        <div className="mt-8 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-5 text-amber-900">
+        <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-5 text-amber-900">
           <p className="font-semibold">Formularul nu poate fi salvat încă</p>
           <p className="mt-2 text-sm leading-6">Nu există specializări în DB. Pentru a crea un medic real, este necesară cel puțin o specializare existentă.</p>
           <div className="mt-4">
@@ -315,11 +317,11 @@ export const DoctorsFormPage = (): JSX.Element => {
         </div>
       ) : null}
 
-      <form className="mt-8 space-y-6" noValidate onSubmit={handleSubmit((values) => {
+      <form className="mt-6 space-y-5" id={doctorFormId} noValidate onSubmit={handleSubmit((values) => {
         setPendingValues(values);
         setShowConfirmOverlay(true);
       })}>
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           <div>
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="doctor_display_name">
               Nume medic
@@ -360,13 +362,13 @@ export const DoctorsFormPage = (): JSX.Element => {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2 lg:items-end">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div>
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="is_active">
               Status medic
             </label>
             <select
-              className="input-base max-w-md"
+              className="input-base max-w-sm"
               id="is_active"
               onChange={(event) => {
                 setValue("is_active", event.target.value === "true", {
@@ -382,11 +384,13 @@ export const DoctorsFormPage = (): JSX.Element => {
             {errors.is_active !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.is_active.message}</p> : null}
           </div>
 
-          <div className="flex lg:justify-end">
+          <div className="flex lg:justify-end lg:self-end">
+            {!shouldRenderServicesSection ? (
             <button className="button-primary gap-2" disabled={!canSave} type="submit">
               {mutation.isPending ? "Salvăm..." : isEditMode ? "Salvează modificările" : "Adaugă medicul"}
               <Save className="h-5 w-5" />
             </button>
+            ) : null}
           </div>
         </div>
 
@@ -409,13 +413,16 @@ export const DoctorsFormPage = (): JSX.Element => {
       </form>
       </div>
 
-      {isEditMode && doctorQuery.data !== undefined && selectedSpecializationId > 0 ? (
+      {shouldRenderServicesSection ? (
         <DoctorServicesOverrides
+          canSave={canSave}
           doctor={{
             doctor_display_name: doctorQuery.data.doctor_display_name,
             doctor_id: doctorQuery.data.doctor_id,
             specialization_id: selectedSpecializationId,
           }}
+          formId={doctorFormId}
+          isSaving={mutation.isPending}
           specializationName={selectedSpecializationName}
         />
       ) : null}

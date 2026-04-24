@@ -26,7 +26,6 @@ describe("auth e2e", () => {
     const user = await createUserFixture(registry, clinic.clinic_id);
 
     const response = await request(app).post("/auth/login").send({
-      clinic_id: clinic.clinic_id,
       email: user.email,
       password: user.password,
     });
@@ -37,12 +36,26 @@ describe("auth e2e", () => {
     expect(response.body.data.user.clinic_id).toBe(clinic.clinic_id);
   });
 
+  test("lists public clinic options for login", async () => {
+    const firstClinic = await createClinicFixture(registry, "Clinica Alpha");
+    const secondClinic = await createClinicFixture(registry, "Clinica Beta");
+
+    const response = await request(app).get("/clinics/public-options");
+
+    expectSuccessResponse(response, 200);
+    expect(response.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ clinic_id: firstClinic.clinic_id, display_name: firstClinic.display_name }),
+        expect.objectContaining({ clinic_id: secondClinic.clinic_id, display_name: secondClinic.display_name }),
+      ]),
+    );
+  });
+
   test("rejects wrong password", async () => {
     const clinic = await createClinicFixture(registry);
     const user = await createUserFixture(registry, clinic.clinic_id);
 
     const response = await request(app).post("/auth/login").send({
-      clinic_id: clinic.clinic_id,
       email: user.email,
       password: `${user.password}-wrong`,
     });
@@ -50,28 +63,13 @@ describe("auth e2e", () => {
     expectErrorResponse(response, 401, "INVALID_CREDENTIALS");
   });
 
-  test("rejects valid email with wrong clinic scope", async () => {
-    const clinic = await createClinicFixture(registry);
-    const otherClinic = await createClinicFixture(registry);
-    const user = await createUserFixture(registry, clinic.clinic_id);
-
+  test("rejects unknown email", async () => {
     const response = await request(app).post("/auth/login").send({
-      clinic_id: otherClinic.clinic_id,
-      email: user.email,
-      password: user.password,
-    });
-
-    expectErrorResponse(response, 401, "INVALID_CREDENTIALS");
-  });
-
-  test("returns FK_NOT_FOUND for nonexistent clinic_id", async () => {
-    const response = await request(app).post("/auth/login").send({
-      clinic_id: 2147483647,
       email: "nobody@test.local",
       password: "irrelevant-password",
     });
 
-    expectErrorResponse(response, 404, "FK_NOT_FOUND", "clinic_id");
+    expectErrorResponse(response, 401, "INVALID_CREDENTIALS");
   });
 
   test("rejects logout without auth", async () => {

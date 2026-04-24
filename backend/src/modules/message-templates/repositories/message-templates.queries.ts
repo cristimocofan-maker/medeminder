@@ -48,6 +48,23 @@ export const messageTemplatesGetByIdQuery = `
   LIMIT 1;
 `;
 
+export const messageTemplatesGetLatestByChannelTypeQuery = `
+  SELECT
+    mt.template_id,
+    mt.clinic_id,
+    mt.template_name,
+    mt.channel_type,
+    mt.message_subject,
+    mt.message_body,
+    mt.created_at,
+    mt.updated_at
+  FROM message_templates mt
+  WHERE mt.clinic_id = $1
+    AND mt.channel_type = $2
+  ORDER BY mt.updated_at DESC, mt.template_id DESC
+  LIMIT 1;
+`;
+
 export const messageTemplatesCreateInsertQuery = `
   INSERT INTO message_templates (
     clinic_id,

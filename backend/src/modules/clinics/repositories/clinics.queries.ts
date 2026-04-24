@@ -1,3 +1,12 @@
+export const clinicsListActiveForLoginQuery = `
+  SELECT
+    c.clinic_id,
+    c.display_name
+  FROM clinics c
+  WHERE c.is_active = TRUE
+  ORDER BY c.display_name ASC, c.clinic_id ASC;
+`;
+
 export const clinicsGetByClinicIdQuery = `
   SELECT
     c.clinic_id,

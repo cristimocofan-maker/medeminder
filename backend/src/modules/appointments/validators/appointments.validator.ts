@@ -125,6 +125,29 @@ export class AppointmentsValidator {
     }
   }
 
+  validateAppointmentsPublicToken(token: string): void {
+    if (!/^[a-f0-9]{64}$/i.test(token)) {
+      throw new ValidationException("Link invalid.", "token");
+    }
+  }
+
+  validateAppointmentsPublicRescheduleRequest(requestDto: { request_details?: unknown }): void {
+    const allowedKeys = ["request_details"];
+    const extraField = getFirstDisallowedKey(requestDto as Record<string, unknown>, allowedKeys);
+
+    if (extraField !== null) {
+      throw new FieldNotAllowedException(undefined, extraField);
+    }
+
+    if (requestDto.request_details !== undefined && typeof requestDto.request_details !== "string") {
+      throw new ValidationException("Mesajul trebuie să fie text.", "request_details");
+    }
+
+    if (typeof requestDto.request_details === "string" && requestDto.request_details.length > 1000) {
+      throw new ValidationException("Mesajul este prea lung.", "request_details");
+    }
+  }
+
   private validateOptionalNumericId(value: number | undefined, field: string): void {
     if (value !== undefined && !Number.isInteger(value)) {
       throw new InvalidIdException(undefined, field);

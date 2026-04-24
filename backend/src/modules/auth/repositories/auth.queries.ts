@@ -1,4 +1,4 @@
-export const authGetByEmailAndClinicIdQuery = `
+export const authGetByEmailQuery = `
   SELECT
     u.user_id,
     u.clinic_id,
@@ -8,6 +8,5 @@ export const authGetByEmailAndClinicIdQuery = `
     u.is_active
   FROM users u
   WHERE u.email = $1
-    AND u.clinic_id = $2
   LIMIT 1;
 `;

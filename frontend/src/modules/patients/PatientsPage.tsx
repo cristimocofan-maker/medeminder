@@ -32,7 +32,6 @@ export const PatientsPage = (): JSX.Element | null => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchValue, setSearchValue] = useState("");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const page = parsePage(searchParams.get("page"));
   const successMessage = (location.state as { successMessage?: string } | null)?.successMessage;
 
@@ -137,21 +136,12 @@ export const PatientsPage = (): JSX.Element | null => {
       return patient.patient_display_name.toLocaleLowerCase().includes(loweredSearch);
     });
 
-    return [...nextItems].sort((leftPatient, rightPatient) => {
-      const comparison = leftPatient.patient_display_name.localeCompare(rightPatient.patient_display_name, "ro", {
-        sensitivity: "base",
-      });
-
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
+    return nextItems;
   })();
 
-  const hasLocalFilters = normalizedSearchValue !== "" || sortDirection !== "asc";
-
-  const clearLocalFilters = (): void => {
-    setSearchValue("");
-    setSortDirection("asc");
-  };
+  const hasLocalFilters = normalizedSearchValue !== "";
+  const activeCount = patientsData.items.filter((patient) => patient.is_active).length;
+  const inactiveCount = patientsData.items.length - activeCount;
 
   return (
     <section className="space-y-4">
@@ -161,85 +151,110 @@ export const PatientsPage = (): JSX.Element | null => {
         </div>
       ) : null}
 
-      <div className="panel flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between md:p-8">
-        <div>
-          <span className="badge-soft">Pacienți</span>
-          <h2 className="mt-4">Lista completă de pacienți ai clinicii</h2>
-          <p className="mt-3">Datele sunt citite exclusiv din `/patients`, cu paginare reală și identificare doar prin `patient_id` numeric.</p>
+      <div className="panel p-5 md:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <span className="badge-soft">Pacienți</span>
+            <h2 className="mt-3 text-3xl md:text-[2.3rem] md:leading-tight">Registrul pacienților</h2>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link className="button-primary gap-2 px-4 py-3" to="/pacienti/nou">
+              <Plus className="h-5 w-5" />
+              Pacient nou
+            </Link>
+          </div>
         </div>
 
-        <Link className="button-primary gap-2" to="/pacienti/nou">
-          <Plus className="h-5 w-5" />
-          Pacient nou
-        </Link>
+        <div className="mt-4 grid gap-2 md:grid-cols-3 xl:max-w-3xl">
+          <div className="rounded-[22px] bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Total</p>
+            <p className="mt-1 text-2xl font-semibold text-ink">{patientsData.total_count}</p>
+          </div>
+          <div className="rounded-[22px] bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Activi</p>
+            <p className="mt-1 text-2xl font-semibold text-ink">{activeCount}</p>
+          </div>
+          <div className="rounded-[22px] bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Inactivi</p>
+            <p className="mt-1 text-2xl font-semibold text-ink">{inactiveCount}</p>
+          </div>
+        </div>
       </div>
 
       <div className="panel overflow-hidden">
-        <div className="border-b border-slate-100 px-6 py-4 md:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="w-full max-w-2xl">
+        <div className="border-b border-slate-100 px-4 py-4 md:px-6">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_auto] xl:items-end">
+            <div className="min-w-0">
               <label className="mb-2 block text-sm font-semibold text-slate-500" htmlFor="patients-local-search">
-                Căutare locală în pagina încărcată
+                Căutare
               </label>
               <input
                 className="input-base"
                 id="patients-local-search"
                 onChange={(event) => setSearchValue(event.target.value)}
-                placeholder="Caută după patient_id sau numele afișat"
+                placeholder="Caută după ID sau pacient"
                 value={searchValue}
               />
-              <p className="mt-2 text-sm text-slate-500">Filtrarea nu schimbă requestul către backend. Caută strict după ID numeric sau după numele afișat.</p>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button className="button-secondary gap-2" onClick={() => setSortDirection((currentDirection) => currentDirection === "asc" ? "desc" : "asc")} type="button">
-                Sortează după pacient: {sortDirection === "asc" ? "A-Z" : "Z-A"}
-              </button>
-              <button className="button-secondary gap-2" disabled={!hasLocalFilters} onClick={clearLocalFilters} type="button">
-                Șterge filtrele
-              </button>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-500">Acțiune rapidă</label>
+              <Link className="button-secondary w-full gap-2 xl:min-w-[180px]" to="/pacienti/nou">
+                <Plus className="h-5 w-5" />
+                Adaugă pacient
+              </Link>
             </div>
           </div>
 
-          <p className="mt-4 text-sm text-slate-500">
-            Rezultate afișate: {filteredItems.length} din {patientsData.items.length} încărcate pe pagina curentă. Total în listă: {patientsData.total_count}.
-          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-600">
+              {filteredItems.length} afișați
+            </span>
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-600">
+              {patientsData.total_count} total
+            </span>
+            {hasLocalFilters ? (
+              <span className="rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">
+                Filtre active
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {filteredItems.length === 0 ? (
           <div className="px-6 py-8 md:px-8">
             <h3 className="text-lg font-semibold text-ink">Nu există rezultate pentru căutarea curentă</h3>
-            <p className="mt-3 text-sm text-slate-500">Ajustează căutarea locală sau apasă „Șterge filtrele” pentru a reveni la rezultatele deja încărcate.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse">
-            <thead className="bg-slate-50">
+            <thead className="bg-slate-50/90">
               <tr>
-                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-500">ID</th>
-                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-500">Pacient</th>
-                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-500">Telefon</th>
-                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-500">Email</th>
-                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-500">Status</th>
-                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-500">Actualizat</th>
-                <th className="px-4 py-4 text-right text-sm font-semibold text-slate-500">Acțiune</th>
+                <th className="whitespace-nowrap px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">ID</th>
+                <th className="whitespace-nowrap px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Pacient</th>
+                <th className="whitespace-nowrap px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Telefon</th>
+                <th className="whitespace-nowrap px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Email</th>
+                <th className="whitespace-nowrap px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Status</th>
+                <th className="whitespace-nowrap px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Actualizat</th>
+                <th className="whitespace-nowrap px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Acțiune</th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.map((patient) => (
-                <tr className="border-t border-slate-100" key={patient.patient_id}>
-                  <td className="px-4 py-4 text-sm font-semibold text-ink">{patient.patient_id}</td>
-                  <td className="px-4 py-4 text-sm text-ink">{patient.patient_display_name}</td>
-                  <td className="px-4 py-4 text-sm text-slate-600">{patient.phone_number}</td>
+                <tr className="border-t border-slate-100 align-middle hover:bg-slate-50/60" key={patient.patient_id}>
+                  <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-ink">#{patient.patient_id}</td>
+                  <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-ink">{patient.patient_display_name}</td>
+                  <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-600">{patient.phone_number}</td>
                   <td className="px-4 py-4 text-sm text-slate-600">{patient.email ?? "-"}</td>
                   <td className="px-4 py-4 text-sm">
-                    <span className={`rounded-full px-3 py-1 font-medium ${patient.is_active ? "bg-emerald-50 text-success" : "bg-slate-100 text-slate-600"}`}>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${patient.is_active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
                       {patient.is_active ? "Activ" : "Inactiv"}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-sm text-slate-600">{formatDate(patient.updated_at)}</td>
-                  <td className="px-4 py-4 text-right">
-                    <Link className="button-secondary inline-flex min-h-10 px-4 py-2 text-sm" to={`/pacienti/${patient.patient_id}`}>
+                  <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-600">{formatDate(patient.updated_at)}</td>
+                  <td className="whitespace-nowrap px-4 py-4 text-right">
+                    <Link className="button-secondary inline-flex min-h-10 min-w-[110px] justify-center px-4 py-2 text-sm" to={`/pacienti/${patient.patient_id}`}>
                       Editează
                     </Link>
                   </td>
@@ -250,10 +265,11 @@ export const PatientsPage = (): JSX.Element | null => {
           </div>
         )}
 
-        <div className="flex flex-col gap-4 border-t border-slate-100 px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-slate-500">
-            Pagina curentă {patientsData.page} din {totalPages}. Rezultate după filtre locale: {filteredItems.length}. Total pacienți: {patientsData.total_count}.
-          </p>
+        <div className="flex flex-col gap-4 border-t border-slate-100 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">Pagina {patientsData.page} / {totalPages}</span>
+            <span>{filteredItems.length} rezultate</span>
+          </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <button

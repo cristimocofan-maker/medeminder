@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
+import { AlertCircle, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AxiosError } from "axios";
@@ -24,11 +25,12 @@ export const LoginPage = (): JSX.Element => {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      clinic_id: undefined,
       email: "",
       password: "",
     },
   });
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const loginMutation = useMutation({
     mutationFn: async (values: LoginFormValues) => {
@@ -46,7 +48,7 @@ export const LoginPage = (): JSX.Element => {
 
       if (fieldErrors.length > 0) {
         fieldErrors.forEach((fieldError) => {
-          if (fieldError.field === "clinic_id" || fieldError.field === "email" || fieldError.field === "password") {
+          if (fieldError.field === "email" || fieldError.field === "password") {
             setError(fieldError.field, {
               type: "server",
               message: fieldError.message,
@@ -62,66 +64,54 @@ export const LoginPage = (): JSX.Element => {
   }
 
   return (
-    <div className="min-h-screen px-4 py-6 md:px-6 md:py-8">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-7xl grid-cols-1 gap-4 lg:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
-        <section className="panel page-enter flex flex-col justify-between overflow-hidden p-8 md:p-10">
+    <div className="flex min-h-screen items-center justify-center px-4 py-6 md:px-6 md:py-8">
+      <section className="panel page-enter w-full max-w-xl overflow-hidden p-8 md:p-10">
+        <div>
+          <h1>Logare clinică</h1>
+        </div>
+
+        <form className="mt-8 space-y-5" noValidate onSubmit={handleSubmit((values) => loginMutation.mutate(values))}>
           <div>
-            <span className="badge-soft">Autentificare reală</span>
-            <h1 className="mt-5">Intră rapid în contul clinicii</h1>
-            <p className="mt-4 max-w-xl">
-              Completează doar cele trei date necesare. După autentificare, accesul este limitat automat la clinica reală din sesiunea ta.
-            </p>
+            <label className="mb-2 block text-base font-semibold text-ink" htmlFor="email">
+              Email
+            </label>
+            <input
+              aria-invalid={errors.email !== undefined}
+              className="input-base"
+              id="email"
+              placeholder="nume@clinica.ro"
+              type="email"
+              {...register("email")}
+            />
+            {errors.email !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.email.message}</p> : null}
           </div>
 
-          <form className="mt-10 space-y-5" noValidate onSubmit={handleSubmit((values) => loginMutation.mutate(values))}>
-            <div>
-              <label className="mb-2 block text-base font-semibold text-ink" htmlFor="clinic_id">
-                ID clinică
-              </label>
-              <input
-                aria-invalid={errors.clinic_id !== undefined}
-                className="input-base"
-                id="clinic_id"
-                inputMode="numeric"
-                placeholder="Exemplu: 12"
-                {...register("clinic_id")}
-              />
-              <p className="mt-2 text-sm text-slate-500">Folosește ID-ul intern numeric al clinicii, nu numele clinicii.</p>
-              {errors.clinic_id !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.clinic_id.message}</p> : null}
-            </div>
-
-            <div>
-              <label className="mb-2 block text-base font-semibold text-ink" htmlFor="email">
-                Email utilizator
-              </label>
-              <input
-                aria-invalid={errors.email !== undefined}
-                className="input-base"
-                id="email"
-                placeholder="nume@clinica.ro"
-                type="email"
-                {...register("email")}
-              />
-              <p className="mt-2 text-sm text-slate-500">Introdu adresa folosită pentru accesul în aplicație.</p>
-              {errors.email !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.email.message}</p> : null}
-            </div>
-
-            <div>
-              <label className="mb-2 block text-base font-semibold text-ink" htmlFor="password">
-                Parolă
-              </label>
+          <div>
+            <label className="mb-2 block text-base font-semibold text-ink" htmlFor="password">
+              Parolă
+            </label>
+            <div className="relative">
               <input
                 aria-invalid={errors.password !== undefined}
-                className="input-base"
+                className="input-base pr-10"
                 id="password"
                 placeholder="Introdu parola"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 {...register("password")}
               />
-              <p className="mt-2 text-sm text-slate-500">Parola este trimisă exclusiv către endpointul real `/auth/login`.</p>
-              {errors.password !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.password.message}</p> : null}
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? "Ascunde parola" : "Arată parola"}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5 text-ink/70" /> : <Eye className="h-5 w-5 text-ink/70" />}
+              </button>
             </div>
+            {errors.password !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.password.message}</p> : null}
+          </div>
 
+          <div>
             {loginMutation.isError ? (
               <div className="rounded-3xl border border-danger/20 bg-orange-50 px-4 py-4 text-danger">
                 <div className="flex items-start gap-3">
@@ -154,39 +144,9 @@ export const LoginPage = (): JSX.Element => {
               {loginMutation.isPending ? "Verificăm datele..." : "Intră în aplicație"}
               <ArrowRight className="h-5 w-5" />
             </button>
-          </form>
-        </section>
-
-        <aside className="page-enter grid gap-4">
-          <article className="panel p-8 md:p-10">
-            <div className="flex items-start gap-4">
-              <div className="rounded-3xl bg-primarySoft p-4 text-primary">
-                <ShieldCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <h2>Ce se întâmplă după login</h2>
-                <p className="mt-3">
-                  JWT-ul este salvat local și injectat automat în toate cererile următoare, iar clinica activă este luată exclusiv din sesiunea reală.
-                </p>
-              </div>
-            </div>
-          </article>
-
-          <article className="panel-subtle p-8 md:p-10">
-            <div className="flex items-start gap-4">
-              <div className="rounded-3xl bg-slate-100 p-4 text-ink">
-                <LockKeyhole className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="text-xl">De ce cerem ID clinică</h2>
-                <p className="mt-3">
-                  Pentru a respecta contractul backend, autentificarea se face cu ID numeric intern. Nu folosim lookup după nume, email clinică sau alte etichete descriptive.
-                </p>
-              </div>
-            </div>
-          </article>
-        </aside>
-      </div>
+          </div>
+        </form>
+      </section>
     </div>
   );
 };

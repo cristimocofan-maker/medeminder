@@ -17,7 +17,7 @@ import type { DoctorScheduleDay } from "../doctor-schedules/doctor-schedules.typ
 import { listDoctors, listSpecializationOptions } from "../doctors/doctors.api";
 import type { DoctorListItem, SpecializationOption } from "../doctors/doctors.types";
 import { createPatient } from "../patients/patients.api";
-import { calculateAgeLabelFromIsoDate, formatPatientBirthDate, normalizePatientCnpInput, parsePatientDemographicsFromCnp } from "../patients/patient-demographics";
+import { calculateAgeLabelFromIsoDate, formatPatientBirthDate, normalizePatientCnpInput, parsePatientDemographicsFromCnp, previewPatientDemographicsFromCnp } from "../patients/patient-demographics";
 import { PatientReferralCard } from "../patients/components/PatientReferralCard";
 import { PatientVisitResultCard } from "../patients/components/PatientVisitResultCard";
 import type { PatientListItem } from "../patients/patients.types";
@@ -58,6 +58,9 @@ interface SelectedAvailabilitySlot {
   label: string;
   day_value: string;
 }
+
+const APPOINTMENT_FLOW_FONT_FAMILY = '"Segoe UI Variable Text", "Instrument Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+const APPOINTMENT_FLOW_LETTER_SPACING = "0.016em";
 
 const DEFAULT_LOCAL_PATIENT_FORM_STATE: LocalPatientFormState = {
   patient_display_name: "",
@@ -158,6 +161,14 @@ const availabilityPeriodLabelFormatter = new Intl.DateTimeFormat("ro-RO", {
   month: "short",
 });
 
+const appointmentSummaryDateTimeFormatter = new Intl.DateTimeFormat("ro-RO", {
+  day: "2-digit",
+  month: "long",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const capitalizeText = (value: string): string => {
   if (value.length === 0) {
     return value;
@@ -194,6 +205,20 @@ const formatAvailabilityDayMonth = (date: Date): string => {
 
 const formatAvailabilityFullLabel = (date: Date): string => {
   return capitalizeText(availabilityFullDateFormatter.format(date));
+};
+
+const formatAppointmentSummaryDateTime = (value: string): string | null => {
+  if (value.trim() === "") {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return appointmentSummaryDateTimeFormatter.format(date);
 };
 
 const buildAvailabilityRangeFromStart = (startDate: Date, dayCount: number): Array<{
@@ -512,7 +537,7 @@ export const AppointmentsFormPage = (): JSX.Element => {
   const startDateTimeValue = watch("start_date_time");
   const endDateTimeValue = watch("end_date_time");
   const ageLabel = useMemo(() => {
-    const derivedDemographics = parsePatientDemographicsFromCnp(localPatientFormState.cnp);
+    const derivedDemographics = previewPatientDemographicsFromCnp(localPatientFormState.cnp);
 
     if (derivedDemographics !== null && !hasManualBirthDateOverride) {
       return calculateAgeLabelFromIsoDate(derivedDemographics.birthDateIso);
@@ -520,6 +545,11 @@ export const AppointmentsFormPage = (): JSX.Element => {
 
     return calculateAgeLabel(localPatientFormState.birth_date);
   }, [hasManualBirthDateOverride, localPatientFormState.birth_date, localPatientFormState.cnp]);
+  const hasInvalidPatientCnp = useMemo(() => {
+    const normalizedCnp = normalizePatientCnpInput(localPatientFormState.cnp);
+
+    return normalizedCnp.length === 13 && parsePatientDemographicsFromCnp(normalizedCnp) === null;
+  }, [localPatientFormState.cnp]);
 
   const appointmentQuery = useQuery({
     queryKey: ["appointment", appointmentId],
@@ -696,7 +726,7 @@ export const AppointmentsFormPage = (): JSX.Element => {
   }, [localPatientFormOwnerId, localPatientFormState]);
 
   useEffect(() => {
-    const derivedDemographics = parsePatientDemographicsFromCnp(localPatientFormState.cnp);
+    const derivedDemographics = previewPatientDemographicsFromCnp(localPatientFormState.cnp);
 
     if (derivedDemographics !== null && !hasManualSexOverride && localPatientFormState.sex !== derivedDemographics.sex) {
       setLocalPatientFormState((currentState) => ({
@@ -1262,6 +1292,9 @@ export const AppointmentsFormPage = (): JSX.Element => {
 
     return durationMinutes;
   }, [endDateTimeValue, startDateTimeValue]);
+  const appointmentSummaryDateLabel = useMemo(() => {
+    return selectedAvailabilitySummary ?? formatAppointmentSummaryDateTime(startDateTimeValue) ?? "Intervalul nu este setat încă.";
+  }, [selectedAvailabilitySummary, startDateTimeValue]);
 
   const handleReferralTargetSelect = ({
     doctorId,
@@ -1579,7 +1612,7 @@ export const AppointmentsFormPage = (): JSX.Element => {
   }
 
   return (
-    <section className="panel p-4 md:p-5">
+    <section className="panel p-4 md:p-5" style={{ fontFamily: APPOINTMENT_FLOW_FONT_FAMILY, letterSpacing: APPOINTMENT_FLOW_LETTER_SPACING }}>
       {showConfirmOverlay && overlayRoot !== null ? createPortal(
         <div className="fixed inset-0 z-[115] flex items-center justify-center bg-slate-950/48 px-4 backdrop-blur-[8px]">
           <div className={`w-full max-w-md rounded-[32px] border border-emerald-200 bg-white/96 px-7 py-8 text-center shadow-2xl shadow-slate-900/30 ring-1 ring-slate-200/90 transition-all duration-300 ${isConfirmOverlayVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-95 opacity-0"}`}>
@@ -1674,10 +1707,31 @@ export const AppointmentsFormPage = (): JSX.Element => {
         <input type="hidden" {...register("start_date_time")} />
         <input type="hidden" {...register("end_date_time")} />
 
-        <section className="order-4 rounded-3xl border border-slate-200 bg-white p-4 md:p-5">
+        {isEditMode ? (
+          <section className="order-0 rounded-3xl border border-slate-200 bg-slate-50 p-4 md:p-5">
+            <div className="flex flex-col gap-4 md:grid md:grid-cols-3">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Programarea curentă</p>
+                <p className="mt-2 text-base font-semibold text-ink">{appointmentSummaryDateLabel}</p>
+              </div>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Medic</p>
+                <p className="mt-2 text-base font-semibold text-ink">{selectedDoctor?.doctor_display_name ?? "-"}</p>
+                <p className="mt-1 text-sm text-slate-500">{selectedDoctor?.specialization_display_name ?? selectedSpecializationName ?? "-"}</p>
+              </div>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Pacient</p>
+                <p className="mt-2 text-base font-semibold text-ink">{localPatientFormState.patient_display_name.trim() === "" ? "-" : localPatientFormState.patient_display_name}</p>
+                <p className="mt-1 text-sm text-slate-500">{localPatientFormState.phone_number.trim() === "" ? "Telefon necompletat" : localPatientFormState.phone_number}</p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <section className={`${isEditMode ? "order-1" : "order-4"} rounded-3xl border border-slate-200 bg-white p-4 md:p-5`}>
           <div>
-            <h3 className="text-lg font-semibold text-ink">4. Date pacient</h3>
-            <p className="mt-1 text-sm text-slate-500">După ce alegi intervalul, completezi sau selectezi pacientul real din DB.</p>
+            <h3 className="text-lg font-semibold text-ink">{isEditMode ? "1. Date pacient" : "4. Date pacient"}</h3>
+            <p className="mt-1 text-sm text-slate-500">{isEditMode ? "Datele pacientului rămân primele la editarea unei programări existente." : "După ce alegi intervalul, completezi sau selectezi pacientul real din DB."}</p>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -1765,6 +1819,7 @@ export const AppointmentsFormPage = (): JSX.Element => {
                 type="text"
                 value={localPatientFormState.cnp}
               />
+              {hasInvalidPatientCnp ? <p className="mt-2 text-sm font-semibold text-amber-700">Atenție: CNP invalid.</p> : null}
               </div>
 
               <div className="lg:col-span-4">
@@ -1908,147 +1963,149 @@ export const AppointmentsFormPage = (): JSX.Element => {
           </div>
         </section>
 
-        <section className="order-1 rounded-3xl border border-slate-200 bg-white p-4 md:p-5">
-          <div>
-            <h3 className="text-lg font-semibold text-ink">1. Alege specializarea și medicul</h3>
-            <p className="mt-1 text-sm text-slate-500">Specializarea filtrează în timp real doar medicii activi disponibili în clinică.</p>
-          </div>
-
-          <div className="mt-4 space-y-4">
-            <div>
-              <p className="mb-3 block text-base font-semibold text-ink">Specializare</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedSpecializationId === null ? "border-primary/30 bg-primarySoft text-primary shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-primary/20 hover:bg-primary/5 hover:text-primary"}`}
-                  onClick={() => {
-                    setSelectedSpecializationId(null);
-                    setDoctorSearchValue("");
-                  }}
-                  type="button"
-                >
-                  Toate specializările
-                </button>
-                {visibleSpecializations.map((specialization) => (
-                  <button
-                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedSpecializationId === specialization.specialization_id ? "border-primary/30 bg-primarySoft text-primary shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-primary/20 hover:bg-primary/5 hover:text-primary"}`}
-                    key={specialization.specialization_id}
-                    onClick={() => {
-                      setSelectedSpecializationId(specialization.specialization_id);
-                      setDoctorSearchValue("");
-                    }}
-                    type="button"
-                  >
-                    {specialization.specialization_display_name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-3 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.2fr)]">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <p className="text-sm font-semibold text-slate-500">Specializarea selectată</p>
-                <p className="mt-2 text-base font-semibold text-ink">
-                  {selectedSpecializationId === null
-                    ? "Toate specializările"
-                    : visibleSpecializations.find((specialization) => specialization.specialization_id === selectedSpecializationId)?.specialization_display_name ?? "Toate specializările"}
-                </p>
-                <p className="mt-2 text-sm text-slate-500">
-                  {hasFilteredDoctors
-                    ? `${filteredDoctors.length} ${filteredDoctors.length === 1 ? "medic disponibil" : "medici disponibili"}`
-                    : "Nu există doctori disponibili pentru filtrarea curentă."}
-                </p>
-              </div>
-
+        {!isEditMode ? (
+          <>
+            <section className="order-1 rounded-3xl border border-slate-200 bg-white p-4 md:p-5">
               <div>
-                <label className="mb-2 block text-base font-semibold text-ink" htmlFor="doctor_id">
-                  Medic activ
-                </label>
-                <div className="rounded-3xl border border-slate-200 bg-white p-3" id="doctor_id">
-                  <input
-                    className="input-base"
-                    onChange={(event) => setDoctorSearchValue(event.target.value)}
-                    placeholder="Caută doctor"
-                    value={doctorSearchValue}
-                  />
+                <h3 className="text-lg font-semibold text-ink">1. Alege specializarea și medicul</h3>
+                <p className="mt-1 text-sm text-slate-500">Specializarea filtrează în timp real doar medicii activi disponibili în clinică.</p>
+              </div>
 
-                  {filteredDoctors.length === 0 ? (
-                    <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                      Nu există doctori activi pentru filtrarea curentă.
-                    </div>
-                  ) : (
-                    <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border border-slate-100">
-                      {filteredDoctors.map((doctor: DoctorListItem) => (
-                        <button
-                          className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition ${selectedDoctorId === doctor.doctor_id ? "bg-primary/5 text-ink" : "text-slate-600 hover:bg-slate-50 hover:text-ink"}`}
-                          key={doctor.doctor_id}
-                          onClick={() => {
-                            setValue("doctor_id", doctor.doctor_id, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            });
-                          }}
-                          type="button"
-                        >
-                          <div>
-                            <span className="block font-semibold">{doctor.doctor_display_name}</span>
-                            <span className="mt-1 block text-xs text-slate-400">{doctor.specialization_display_name}</span>
-                          </div>
-                          {selectedDoctorId === doctor.doctor_id ? (
-                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">Selectat</span>
-                          ) : null}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="mb-3 block text-base font-semibold text-ink">Specializare</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedSpecializationId === null ? "border-primary/30 bg-primarySoft text-primary shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-primary/20 hover:bg-primary/5 hover:text-primary"}`}
+                      onClick={() => {
+                        setSelectedSpecializationId(null);
+                        setDoctorSearchValue("");
+                      }}
+                      type="button"
+                    >
+                      Toate specializările
+                    </button>
+                    {visibleSpecializations.map((specialization) => (
+                      <button
+                        className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedSpecializationId === specialization.specialization_id ? "border-primary/30 bg-primarySoft text-primary shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-primary/20 hover:bg-primary/5 hover:text-primary"}`}
+                        key={specialization.specialization_id}
+                        onClick={() => {
+                          setSelectedSpecializationId(specialization.specialization_id);
+                          setDoctorSearchValue("");
+                        }}
+                        type="button"
+                      >
+                        {specialization.specialization_display_name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                {errors.doctor_id !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.doctor_id.message}</p> : null}
-              </div>
-            </div>
-          </div>
 
-          {hasDoctors && !hasFilteredDoctors ? (
-            <div className="mt-3 rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900">
-              <p className="font-semibold">Nu există doctori pentru filtrarea curentă</p>
-              <p className="mt-1 text-sm leading-6">
-                {selectedSpecializationId === null
-                  ? "Alege o specializare sau selectează un medic din lista activă."
-                  : normalizedDoctorSearchValue === ""
-                    ? "Nu există doctori activi pentru specializarea aleasă."
-                    : "Nu există doctori activi pentru căutarea curentă."}
-              </p>
-            </div>
-          ) : null}
-        </section>
+                <div className="grid gap-3 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.2fr)]">
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-slate-500">Specializarea selectată</p>
+                    <p className="mt-2 text-base font-semibold text-ink">
+                      {selectedSpecializationId === null
+                        ? "Toate specializările"
+                        : visibleSpecializations.find((specialization) => specialization.specialization_id === selectedSpecializationId)?.specialization_display_name ?? "Toate specializările"}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      {hasFilteredDoctors
+                        ? `${filteredDoctors.length} ${filteredDoctors.length === 1 ? "medic disponibil" : "medici disponibili"}`
+                        : "Nu există doctori disponibili pentru filtrarea curentă."}
+                    </p>
+                  </div>
 
-        <div className="order-2">
-          <AppointmentServicesSelector
-            doctor={selectedDoctor}
-            slotDurationMinutes={selectedSlotDurationMinutes}
-            subtitle="Serviciile disponibile se schimbă automat odată cu specializarea aleasă."
-            title="2. Servicii medicale"
-          />
-        </div>
+                  <div>
+                    <label className="mb-2 block text-base font-semibold text-ink" htmlFor="doctor_id">
+                      Medic activ
+                    </label>
+                    <div className="rounded-3xl border border-slate-200 bg-white p-3" id="doctor_id">
+                      <input
+                        className="input-base"
+                        onChange={(event) => setDoctorSearchValue(event.target.value)}
+                        placeholder="Caută doctor"
+                        value={doctorSearchValue}
+                      />
 
-        <section className="order-3 rounded-3xl border border-slate-200 bg-white p-4 md:p-5">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold text-ink">3. Alege intervalul</h3>
-            {hasSelectedDoctor ? <span className="text-sm text-slate-500">Săptămână / lună</span> : null}
-          </div>
-
-          <div className="min-h-[320px]">
-            {!hasSelectedDoctor ? (
-              <div className="flex min-h-[320px] items-center rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900">
-                <p className="font-semibold">Alege mai întâi specializarea și doctorul</p>
-              </div>
-            ) : doctorSchedulesQuery.isLoading || appointmentsAvailabilityQuery.isLoading ? (
-              <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-primary">
-                <div className="flex items-center gap-3">
-                  <LoaderCircle className="h-5 w-5 animate-spin" />
-                  <span className="font-semibold">Încărcăm programul doctorului și programările deja existente</span>
+                      {filteredDoctors.length === 0 ? (
+                        <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                          Nu există doctori activi pentru filtrarea curentă.
+                        </div>
+                      ) : (
+                        <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border border-slate-100">
+                          {filteredDoctors.map((doctor: DoctorListItem) => (
+                            <button
+                              className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition ${selectedDoctorId === doctor.doctor_id ? "bg-primary/5 text-ink" : "text-slate-600 hover:bg-slate-50 hover:text-ink"}`}
+                              key={doctor.doctor_id}
+                              onClick={() => {
+                                setValue("doctor_id", doctor.doctor_id, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                });
+                              }}
+                              type="button"
+                            >
+                              <div>
+                                <span className="block font-semibold">{doctor.doctor_display_name}</span>
+                                <span className="mt-1 block text-xs text-slate-400">{doctor.specialization_display_name}</span>
+                              </div>
+                              {selectedDoctorId === doctor.doctor_id ? (
+                                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">Selectat</span>
+                              ) : null}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {errors.doctor_id !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.doctor_id.message}</p> : null}
+                  </div>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4">
+
+              {hasDoctors && !hasFilteredDoctors ? (
+                <div className="mt-3 rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900">
+                  <p className="font-semibold">Nu există doctori pentru filtrarea curentă</p>
+                  <p className="mt-1 text-sm leading-6">
+                    {selectedSpecializationId === null
+                      ? "Alege o specializare sau selectează un medic din lista activă."
+                      : normalizedDoctorSearchValue === ""
+                        ? "Nu există doctori activi pentru specializarea aleasă."
+                        : "Nu există doctori activi pentru căutarea curentă."}
+                  </p>
+                </div>
+              ) : null}
+            </section>
+
+            <div className="order-2">
+              <AppointmentServicesSelector
+                doctor={selectedDoctor}
+                slotDurationMinutes={selectedSlotDurationMinutes}
+                subtitle="Serviciile disponibile se schimbă automat odată cu specializarea aleasă."
+                title="2. Servicii medicale"
+              />
+            </div>
+
+            <section className="order-3 rounded-3xl border border-slate-200 bg-white p-4 md:p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-ink">3. Alege intervalul</h3>
+                {hasSelectedDoctor ? <span className="text-sm text-slate-500">Săptămână / lună</span> : null}
+              </div>
+
+              <div className="min-h-[320px]">
+                {!hasSelectedDoctor ? (
+                  <div className="flex min-h-[320px] items-center rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900">
+                    <p className="font-semibold">Alege mai întâi specializarea și doctorul</p>
+                  </div>
+                ) : doctorSchedulesQuery.isLoading || appointmentsAvailabilityQuery.isLoading ? (
+                  <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-primary">
+                    <div className="flex items-center gap-3">
+                      <LoaderCircle className="h-5 w-5 animate-spin" />
+                      <span className="font-semibold">Încărcăm programul doctorului și programările deja existente</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div className="inline-flex rounded-2xl bg-[#edf7f6] p-1">
                     <button
@@ -2250,21 +2307,24 @@ export const AppointmentsFormPage = (): JSX.Element => {
           </div>
         </section>
 
-        <div className="order-5">
+          </>
+        ) : null}
+
+        <div className={isEditMode ? "order-2" : "order-5"}>
           <PatientVisitResultCard
             subtitle="Rezultatele, recomandările și follow-up-ul rămân locale până la etapa de persistare backend dedicată."
-            title="4. Rezultatele consultației"
+            title={isEditMode ? "2. Rezultatele consultației" : "4. Rezultatele consultației"}
           />
         </div>
 
-        <div className="order-6">
+        <div className={isEditMode ? "order-3" : "order-6"}>
           <PatientReferralCard
             initialDoctorId={selectedDoctorId > 0 ? selectedDoctorId : null}
             initialSpecializationId={selectedDoctor?.specialization_id ?? selectedSpecializationId}
             onSelectReferralTarget={handleReferralTargetSelect}
             prefillPatientId={selectedPatientId > 0 ? selectedPatientId : prefillPatientId}
             subtitle="Poți porni imediat o reprogramare reală către același medic sau către o altă specializare."
-            title="5. Reprogramare / trimitere"
+            title={isEditMode ? "3. Reprogramare / trimitere" : "5. Reprogramare / trimitere"}
           />
         </div>
 

@@ -1,12 +1,12 @@
 import type { DatabaseClient } from "../../../shared/types/database.types";
 import type { AuthUserRecord } from "../types/auth.types";
-import { authGetByEmailAndClinicIdQuery } from "./auth.queries";
+import { authGetByEmailQuery } from "./auth.queries";
 
 export class AuthRepository {
   constructor(private readonly databaseClient: DatabaseClient) {}
 
-  async getByEmailAndClinicId(email: string, clinicId: number): Promise<AuthUserRecord | null> {
-    const result = await this.databaseClient.query<AuthUserRecord>(authGetByEmailAndClinicIdQuery, [email, clinicId]);
+  async getByEmail(email: string): Promise<AuthUserRecord | null> {
+    const result = await this.databaseClient.query<AuthUserRecord>(authGetByEmailQuery, [email]);
 
     if (result.rowCount === 0) {
       return null;

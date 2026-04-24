@@ -12,3 +12,16 @@ export interface SpecializationsListRepositoryRow {
   created_at: string;
   updated_at: string;
 }
+
+export interface SpecializationServiceRepositoryRecord {
+  service_id: number;
+  clinic_id: number;
+  specialization_id: number;
+  service_name: string;
+  price: number;
+  duration_minutes?: number;
+  description?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}

@@ -24,10 +24,30 @@ export const createSpecializationsRouter = (
     authMiddleware,
     specializationsController.specializationsCreate.bind(specializationsController),
   );
+  router.get(
+    SPECIALIZATIONS_ROUTE_PATHS.services,
+    authMiddleware,
+    specializationsController.specializationServicesList.bind(specializationsController),
+  );
+  router.post(
+    SPECIALIZATIONS_ROUTE_PATHS.services,
+    authMiddleware,
+    specializationsController.specializationServiceCreate.bind(specializationsController),
+  );
   router.patch(
     SPECIALIZATIONS_ROUTE_PATHS.byId,
     authMiddleware,
     specializationsController.specializationsUpdate.bind(specializationsController),
+  );
+  router.patch(
+    SPECIALIZATIONS_ROUTE_PATHS.serviceById,
+    authMiddleware,
+    specializationsController.specializationServiceUpdate.bind(specializationsController),
+  );
+  router.delete(
+    SPECIALIZATIONS_ROUTE_PATHS.serviceById,
+    authMiddleware,
+    specializationsController.specializationServiceDelete.bind(specializationsController),
   );
 
   return router;

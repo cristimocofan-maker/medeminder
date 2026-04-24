@@ -1,5 +1,6 @@
 import type { AuthContext } from "../../../shared/auth/auth.types";
 import type { PasswordHasher } from "../../../shared/auth/password-hasher";
+import { ValidationException } from "../../../shared/exceptions/validation.exception";
 import { resolvePagination } from "../../../shared/pagination/pagination.utils";
 import { ResourceNotFoundException } from "../../../shared/exceptions/resource-not-found.exception";
 import type { UsersCreateRequestDto } from "../dto/users-create.request.dto";
@@ -49,6 +50,12 @@ export class UsersService {
   }
 
   async usersCreate(authContext: AuthContext, requestDto: UsersCreateRequestDto): Promise<UsersCreateResponseDto> {
+    const existingUserWithEmail = await this.usersRepository.getByEmail(requestDto.email);
+
+    if (existingUserWithEmail !== null) {
+      throw new ValidationException("Există deja un utilizator cu acest email în altă clinică.", "email");
+    }
+
     const repositoryPayload: UsersCreateRepositoryPayload = {
       email: requestDto.email,
       password_hash: await this.passwordHasher.hash(requestDto.password),
@@ -70,6 +77,12 @@ export class UsersService {
 
     if (existingUser === null) {
       throw new ResourceNotFoundException();
+    }
+
+    const existingUserWithEmail = await this.usersRepository.getByEmailExcludingUser(requestDto.email, userId);
+
+    if (existingUserWithEmail !== null) {
+      throw new ValidationException("Există deja un utilizator cu acest email în altă clinică.", "email");
     }
 
     const repositoryPayload: UsersUpdateRepositoryPayload = {

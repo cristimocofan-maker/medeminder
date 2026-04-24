@@ -4,7 +4,7 @@ import { listDoctors, listSpecializationOptions } from "../../doctors/doctors.ap
 import { useDoctorServiceOverridesRegistry } from "../../doctors/components/doctor-services.store";
 import { resolveDoctorServices } from "../../doctors/components/resolve-doctor-services";
 import type { DoctorListItem, SpecializationOption } from "../../doctors/doctors.types";
-import { useSpecializationServicesRegistry } from "../../specializations/components/specialization-services.store";
+import { listSpecializationServices } from "../../specializations/specializations.api";
 import { getSpecializationTheme } from "../../specializations/components/specialization-theme";
 
 interface PatientVisitServicesCardProps {
@@ -37,7 +37,6 @@ export const PatientVisitServicesCard = ({
   title = "Servicii efectuate",
 }: PatientVisitServicesCardProps): JSX.Element => {
   const { getOverrides } = useDoctorServiceOverridesRegistry();
-  const { getServices } = useSpecializationServicesRegistry();
   const specializationsQuery = useQuery({
     queryKey: ["visit-specializations-options"],
     queryFn: listSpecializationOptions,
@@ -117,6 +116,11 @@ export const PatientVisitServicesCard = ({
     return initialSpecializationName;
   }, [allowSpecializationSelection, initialSpecializationName, selectedDoctor, selectedSpecializationId, specializationOptions]);
   const theme = getSpecializationTheme(resolvedSpecializationName);
+  const specializationServicesQuery = useQuery({
+    queryKey: ["specialization-services", resolvedSpecializationId],
+    queryFn: async () => listSpecializationServices(resolvedSpecializationId as number),
+    enabled: resolvedSpecializationId !== null,
+  });
 
   const resolvedServices = useMemo(() => {
     if (selectedDoctor === null || resolvedSpecializationId === null) {
@@ -125,10 +129,10 @@ export const PatientVisitServicesCard = ({
 
     return resolveDoctorServices(
       selectedDoctor,
-      getServices(resolvedSpecializationId),
+      specializationServicesQuery.data ?? [],
       getOverrides(selectedDoctor.doctor_id),
     );
-  }, [getOverrides, getServices, resolvedSpecializationId, selectedDoctor]);
+  }, [getOverrides, resolvedSpecializationId, selectedDoctor, specializationServicesQuery.data]);
 
   useEffect(() => {
     setServiceStateById((currentValue) => {

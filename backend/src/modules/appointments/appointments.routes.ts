@@ -9,6 +9,16 @@ export const createAppointmentsRouter = (
 ): Router => {
   const router = Router();
 
+  router.get(APPOINTMENTS_ROUTE_PATHS.publicConfirm, appointmentsController.appointmentsPublicConfirm.bind(appointmentsController));
+  router.get(APPOINTMENTS_ROUTE_PATHS.publicCancel, appointmentsController.appointmentsPublicCancel.bind(appointmentsController));
+  router.get(
+    APPOINTMENTS_ROUTE_PATHS.publicReschedule,
+    appointmentsController.appointmentsPublicRescheduleGet.bind(appointmentsController),
+  );
+  router.post(
+    APPOINTMENTS_ROUTE_PATHS.publicReschedule,
+    appointmentsController.appointmentsPublicReschedulePost.bind(appointmentsController),
+  );
   router.get(APPOINTMENTS_ROUTE_PATHS.root, authMiddleware, appointmentsController.appointmentsList.bind(appointmentsController));
   router.get(APPOINTMENTS_ROUTE_PATHS.byId, authMiddleware, appointmentsController.appointmentsGetById.bind(appointmentsController));
   router.post(APPOINTMENTS_ROUTE_PATHS.root, authMiddleware, appointmentsController.appointmentsCreate.bind(appointmentsController));

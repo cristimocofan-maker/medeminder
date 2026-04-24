@@ -18,7 +18,11 @@ html {
 
 body {
   min-height: 100vh;
-  font-family: "Instrument Sans", "Segoe UI", sans-serif;
+  font-family: "Segoe UI Variable Text", "Instrument Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: 0.008em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   color: #102033;
   background: transparent;
 }
@@ -36,11 +40,11 @@ textarea {
 
 @layer base {
   h1 {
-    @apply text-3xl font-semibold tracking-tight text-ink md:text-4xl;
+    @apply text-3xl font-semibold leading-[1.08] text-ink md:text-4xl;
   }
 
   h2 {
-    @apply text-2xl font-semibold tracking-tight text-ink;
+    @apply text-2xl font-semibold leading-[1.12] text-ink;
   }
 
   p {
@@ -54,11 +58,11 @@ textarea {
 
 @layer components {
   .panel {
-    @apply rounded-shell border border-white/70 bg-white/90 shadow-panel backdrop-blur;
+    @apply rounded-shell border border-white/80 bg-white/95 shadow-[0_10px_32px_rgba(15,23,42,0.05)] backdrop-blur;
   }
 
   .panel-subtle {
-    @apply rounded-3xl border border-line/70 bg-white/80 shadow-sm;
+    @apply rounded-3xl border border-line/80 bg-white/85 shadow-[0_6px_20px_rgba(15,23,42,0.04)];
   }
 
   .input-base {
@@ -70,11 +74,11 @@ textarea {
   }
 
   .button-secondary {
-    @apply inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-ink transition hover:border-primary/40 hover:bg-primary/5;
+    @apply inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white/95 px-5 py-3 text-base font-semibold text-ink transition hover:border-primary/30 hover:bg-primary/5;
   }
 
   .badge-soft {
-    @apply inline-flex items-center rounded-full bg-primarySoft px-3 py-1 text-sm font-medium text-primary;
+    @apply inline-flex items-center rounded-full bg-primarySoft px-3 py-1 text-sm font-semibold text-primary;
   }
 }
 

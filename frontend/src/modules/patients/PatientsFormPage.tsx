@@ -60,6 +60,7 @@ export const PatientsFormPage = (): JSX.Element => {
   const params = useParams();
   const patientId = params.patient_id === undefined ? null : Number(params.patient_id);
   const isEditMode = patientId !== null;
+  const patientFormId = "patient-form";
 
   const {
     formState: { errors, isSubmitting },
@@ -205,28 +206,35 @@ export const PatientsFormPage = (): JSX.Element => {
 
   return (
     <section className="space-y-6">
-      <div className="panel p-6 md:p-8">
+      <div className="panel p-5 md:p-6 xl:p-7">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
+        <div className="max-w-3xl">
           <span className="badge-soft">{isEditMode ? "Editare pacient" : "Pacient nou"}</span>
-          <h2 className="mt-4">{isEditMode ? "Actualizează datele pacientului" : "Adaugă un pacient nou"}</h2>
+          <h2 className="mt-3">{isEditMode ? "Actualizează datele pacientului" : "Adaugă un pacient nou"}</h2>
         </div>
 
-        <Link className="button-secondary gap-2" to="/pacienti">
-          <ArrowLeft className="h-5 w-5" />
-          Înapoi la listă
-        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button className="button-primary gap-2" disabled={mutation.isPending || isSubmitting} form={patientFormId} type="submit">
+            {mutation.isPending ? "Salvăm..." : isEditMode ? "Salvează modificările" : "Adaugă pacientul"}
+            <Save className="h-5 w-5" />
+          </button>
+          <Link className="button-secondary gap-2" to="/pacienti">
+            <ArrowLeft className="h-5 w-5" />
+            Înapoi la listă
+          </Link>
+        </div>
       </div>
 
-      <form className="mt-8 space-y-6" noValidate onSubmit={handleSubmit((values) => {
+      <form className="mt-6 space-y-5" id={patientFormId} noValidate onSubmit={handleSubmit((values) => {
         if (!confirmFormSave("pacient", isEditMode)) {
           return;
         }
 
         mutation.mutate(values);
       })}>
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div>
+        <div className="panel-subtle p-4 md:p-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
+          <div className="md:col-span-2 xl:col-span-5">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="patient_display_name">
               Nume pacient
             </label>
@@ -242,7 +250,7 @@ export const PatientsFormPage = (): JSX.Element => {
             ) : null}
           </div>
 
-          <div>
+          <div className="xl:col-span-3">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="cnp">
               CNP
             </label>
@@ -259,10 +267,8 @@ export const PatientsFormPage = (): JSX.Element => {
             />
             {errors.cnp !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.cnp.message}</p> : null}
           </div>
-        </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div>
+          <div className="xl:col-span-2">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="phone_number">
               Telefon
             </label>
@@ -276,7 +282,7 @@ export const PatientsFormPage = (): JSX.Element => {
             {errors.phone_number !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.phone_number.message}</p> : null}
           </div>
 
-          <div>
+          <div className="xl:col-span-2">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="city">
               Oraș
             </label>
@@ -289,33 +295,29 @@ export const PatientsFormPage = (): JSX.Element => {
             />
             {errors.city !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.city.message}</p> : null}
           </div>
-        </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div>
+          <div className="xl:col-span-2">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="derived-sex">
               Sex
             </label>
             <input className="input-base bg-slate-50 text-slate-500" id="derived-sex" readOnly type="text" value={derivedSex} />
           </div>
 
-          <div>
+          <div className="xl:col-span-3">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="derived-birth-date">
               Data nașterii
             </label>
             <input className="input-base bg-slate-50 text-slate-500" id="derived-birth-date" readOnly type="text" value={derivedBirthDateDisplay} />
           </div>
 
-          <div>
+          <div className="xl:col-span-2">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="derived-age">
               Vârstă
             </label>
             <input className="input-base bg-slate-50 text-slate-500" id="derived-age" readOnly type="text" value={ageLabel} />
           </div>
-        </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div>
+          <div className="md:col-span-2 xl:col-span-3">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="email">
               Email
             </label>
@@ -332,7 +334,7 @@ export const PatientsFormPage = (): JSX.Element => {
             {errors.email !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.email.message}</p> : null}
           </div>
 
-          <div>
+          <div className="xl:col-span-2">
             <label className="mb-2 block text-base font-semibold text-ink" htmlFor="is_active">
               Status pacient
             </label>
@@ -352,15 +354,16 @@ export const PatientsFormPage = (): JSX.Element => {
             </select>
             {errors.is_active !== undefined ? <p className="mt-2 text-sm font-medium text-danger">{errors.is_active.message}</p> : null}
           </div>
+          </div>
         </div>
 
-        <div>
+        <div className="panel-subtle p-4 md:p-5">
           <label className="mb-2 block text-base font-semibold text-ink" htmlFor="notes">
             Notițe
           </label>
           <textarea
             aria-invalid={errors.notes !== undefined}
-            className="input-base min-h-32 resize-y"
+            className="input-base min-h-24 resize-y md:min-h-[112px]"
             id="notes"
             placeholder="Adaugă detalii utile pentru echipa clinicii"
             {...register("notes", {

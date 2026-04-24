@@ -13,6 +13,13 @@ export class ClinicSettingsValidator {
       "default_channel_type",
       "appointment_reminder_hours_before",
       "follow_up_delay_days",
+      "sms_provider_name",
+      "sms_sender_name",
+      "sms_username",
+      "sms_password",
+      "sms_token",
+      "sms_is_primary_gateway",
+      "sms_patient_action_base_path",
     ];
     const extraField = getFirstDisallowedKey(requestDto as unknown as Record<string, unknown>, allowedKeys);
 
@@ -59,6 +66,30 @@ export class ClinicSettingsValidator {
 
     if (requestDto.follow_up_delay_days < 0 || requestDto.follow_up_delay_days > 365) {
       throw new ValidationException("follow_up_delay_days trebuie să fie între 0 și 365.", "follow_up_delay_days");
+    }
+
+    if (requestDto.sms_provider_name !== undefined && requestDto.sms_provider_name !== null && requestDto.sms_provider_name.length > 255) {
+      throw new ValidationException("sms_provider_name trebuie să aibă cel mult 255 de caractere.", "sms_provider_name");
+    }
+
+    if (requestDto.sms_sender_name !== undefined && requestDto.sms_sender_name !== null && requestDto.sms_sender_name.length > 255) {
+      throw new ValidationException("sms_sender_name trebuie să aibă cel mult 255 de caractere.", "sms_sender_name");
+    }
+
+    if (requestDto.sms_username !== undefined && requestDto.sms_username !== null && requestDto.sms_username.length > 255) {
+      throw new ValidationException("sms_username trebuie să aibă cel mult 255 de caractere.", "sms_username");
+    }
+
+    if (requestDto.sms_password !== undefined && requestDto.sms_password !== null && requestDto.sms_password.length > 1024) {
+      throw new ValidationException("sms_password este prea lung.", "sms_password");
+    }
+
+    if (requestDto.sms_token !== undefined && requestDto.sms_token !== null && requestDto.sms_token.length > 2048) {
+      throw new ValidationException("sms_token este prea lung.", "sms_token");
+    }
+
+    if (requestDto.sms_patient_action_base_path !== undefined && requestDto.sms_patient_action_base_path !== null && requestDto.sms_patient_action_base_path.length > 255) {
+      throw new ValidationException("sms_patient_action_base_path trebuie să aibă cel mult 255 de caractere.", "sms_patient_action_base_path");
     }
   }
 }

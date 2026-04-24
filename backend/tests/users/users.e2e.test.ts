@@ -43,6 +43,28 @@ describe("users e2e", () => {
     expect(storedUser!.password_hash).not.toBe(payload.password);
   });
 
+  test("rejects creating the same email in another clinic", async () => {
+    const duplicateEmail = `duplicate-${Date.now()}@test.local`;
+
+    const firstResponse = await withAuth(request(app).post("/users"), suiteContext!.primary).send({
+      email: duplicateEmail,
+      password: `Password-first-${Date.now()}`,
+      user_role_label: "administrator",
+      is_active: true,
+    });
+
+    expectSuccessResponse(firstResponse, 201);
+
+    const secondResponse = await withAuth(request(app).post("/users"), suiteContext!.secondary).send({
+      email: duplicateEmail,
+      password: `Password-second-${Date.now()}`,
+      user_role_label: "administrator",
+      is_active: true,
+    });
+
+    expectErrorResponse(secondResponse, 400, "VALIDATION_ERROR", "email");
+  });
+
   test("gets user by id", async () => {
     const user = await createUserFixture(suiteContext!.registry, suiteContext!.primary.clinic_id);
 

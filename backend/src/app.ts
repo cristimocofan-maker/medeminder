@@ -51,6 +51,7 @@ import { AppointmentsService } from "./modules/appointments/services/appointment
 import { AppointmentsRepository } from "./modules/appointments/repositories/appointments.repository";
 import { AppointmentsValidator } from "./modules/appointments/validators/appointments.validator";
 import { AppointmentsMapper } from "./modules/appointments/mappers/appointments.mapper";
+import { AppointmentPublicActionsService } from "./modules/appointments/services/appointment-public-actions.service";
 import { createMessagesRouter } from "./modules/messages/messages.routes";
 import { MessagesController } from "./modules/messages/controllers/messages.controller";
 import { MessagesService } from "./modules/messages/services/messages.service";
@@ -91,9 +92,12 @@ import { createDoctorSchedulesRouter } from "./modules/doctor-schedules/doctor-s
 import { DoctorSchedulesController } from "./modules/doctor-schedules/doctor-schedules.controller";
 import { DoctorSchedulesService } from "./modules/doctor-schedules/doctor-schedules.service";
 import { DoctorSchedulesRepository } from "./modules/doctor-schedules/doctor-schedules.repository";
+import { createAdminRouter } from "./modules/admin/admin.routes";
+import { AdminController } from "./modules/admin/controllers/admin.controller";
+import { AdminSyncService } from "./modules/admin/services/admin-sync.service";
 
 const databaseClient = createDatabaseClient();
-const authSessionService = new AuthSessionService(envConfig.sessionSecret, 3600);
+const authSessionService = new AuthSessionService(envConfig.sessionSecret, envConfig.authSessionExpiresInSeconds);
 const authMiddleware = createAuthMiddleware(authSessionService);
 const passwordHasher = new BcryptPasswordHasher();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -119,6 +123,7 @@ const authController = new AuthController(
     clinicsRepository,
     new AuthMapper(),
     authSessionService,
+    envConfig.authSessionExpiresInSeconds,
     bcrypt,
   ),
   new AuthValidator(),
@@ -150,8 +155,21 @@ const patientsController = new PatientsController(
 );
 
 const appointmentsController = new AppointmentsController(
-  new AppointmentsService(appointmentsRepository, doctorsRepository, patientsRepository, new AppointmentsMapper()),
+  new AppointmentsService(
+    appointmentsRepository,
+    doctorsRepository,
+    patientsRepository,
+    messagesRepository,
+    messageTemplatesRepository,
+    new AppointmentsMapper(),
+  ),
   new AppointmentsValidator(),
+  new AppointmentPublicActionsService(
+    appointmentsRepository,
+    messagesRepository,
+    responsesRepository,
+    followUpsRepository,
+  ),
 );
 
 const messagesController = new MessagesController(
@@ -188,6 +206,8 @@ const doctorSchedulesController = new DoctorSchedulesController(
   new DoctorSchedulesService(doctorSchedulesRepository, doctorsRepository),
 );
 
+const adminController = new AdminController(new AdminSyncService());
+
 export const closeAppResources = async (): Promise<void> => {
   await databaseClient.close?.();
 };
@@ -195,6 +215,7 @@ export const closeAppResources = async (): Promise<void> => {
 export const app = express();
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 app.use(requestContextMiddleware);
 
 app.use("/auth", createAuthRouter(authController, authMiddleware));
@@ -211,6 +232,7 @@ app.use("/message-templates", createMessageTemplatesRouter(messageTemplatesContr
 app.use("/clinic-settings", createClinicSettingsRouter(clinicSettingsController, authMiddleware));
 app.use("/responses", createResponsesRouter(responsesController, authMiddleware));
 app.use("/doctor-schedules", createDoctorSchedulesRouter(doctorSchedulesController, authMiddleware));
+app.use("/admin", createAdminRouter(adminController, authMiddleware));
 
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);

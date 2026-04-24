@@ -39,6 +39,9 @@ export interface SmsAutomationRule {
 export interface SmsGatewayConnectionConfig {
   provider_name: string;
   sender_name: string;
+  token?: string;
+  username?: string | null;
+  password?: string | null;
   is_primary_gateway: boolean;
   patient_action_base_path: string;
   last_checked_at: string | null;

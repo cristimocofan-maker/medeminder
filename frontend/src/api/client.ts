@@ -1,19 +1,20 @@
 import axios from "axios";
 import { APP_ROUTES } from "../shared/constants/routes";
-import { authSessionStorage } from "../shared/utils/storage";
+
+const apiBaseUrl = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL;
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: apiBaseUrl,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
 apiClient.interceptors.request.use((config) => {
-  const session = authSessionStorage.read();
+  const token = localStorage.getItem("kidsrap.access_token");
 
-  if (session?.access_token !== undefined) {
-    config.headers.Authorization = `${session.token_type} ${session.access_token}`;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
 
   return config;
@@ -23,12 +24,10 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      authSessionStorage.clear();
+      localStorage.clear();
 
       if (window.location.pathname !== APP_ROUTES.login) {
-        const currentPath = `${window.location.pathname}${window.location.search}`;
-        const nextLoginUrl = `${APP_ROUTES.login}?reason=session-expired&returnTo=${encodeURIComponent(currentPath)}`;
-        window.location.replace(nextLoginUrl);
+        window.location.replace(APP_ROUTES.login);
       }
     }
 

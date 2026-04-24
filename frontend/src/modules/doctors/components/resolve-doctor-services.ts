@@ -1,16 +1,16 @@
 import type { DoctorListItem } from "../doctors.types";
 import type { DoctorServiceOverrideRecord } from "./doctor-services.store";
-import type { SpecializationService } from "../../specializations/components/specialization-services.store";
+import type { SpecializationService } from "../../specializations/specializations.types";
 
 export interface ResolvedDoctorService {
   description?: string;
   doctor_id: number;
   duration_minutes?: number;
-  id: string;
+  id: number | string;
   is_active: boolean;
   name: string;
   price: number;
-  service_id?: string;
+  service_id?: number;
   source: "default" | "override" | "exclusive";
   specialization_id: number;
 }
@@ -23,33 +23,33 @@ export const resolveDoctorServices = (
   const overrideMap = new Map(
     doctorOverrides
       .filter((override) => override.service_id !== undefined)
-      .map((override) => [override.service_id as string, override]),
+      .map((override) => [override.service_id as number, override]),
   );
 
   const resolvedServices: ResolvedDoctorService[] = specializationServices.map((service) => {
-    const override = overrideMap.get(service.id);
+    const override = overrideMap.get(service.service_id);
 
-    if (override === undefined || override.use_default) {
+    if (override === undefined || (override.use_default && override.is_active === undefined)) {
       return {
-        id: service.id,
+        id: service.service_id,
         doctor_id: doctor.doctor_id,
         specialization_id: service.specialization_id,
-        service_id: service.id,
-        name: service.name,
+        service_id: service.service_id,
+        name: service.service_name,
         price: service.price,
         duration_minutes: service.duration_minutes,
         description: service.description,
-        is_active: service.is_active,
+        is_active: override?.is_active ?? service.is_active,
         source: "default",
       };
     }
 
     return {
-      id: service.id,
+      id: service.service_id,
       doctor_id: doctor.doctor_id,
       specialization_id: service.specialization_id,
-      service_id: service.id,
-      name: override.custom_name ?? service.name,
+      service_id: service.service_id,
+      name: override.custom_name ?? service.service_name,
       price: override.custom_price ?? service.price,
       duration_minutes: override.custom_duration_minutes ?? service.duration_minutes,
       description: service.description,

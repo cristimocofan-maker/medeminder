@@ -10,8 +10,10 @@ const createApiProxy = () => ({
 
 export default defineConfig({
   plugins: [react()],
+
   server: {
-    port: 5173,
+    port: 3000,
+    strictPort: true,
     proxy: {
       "/auth": createApiProxy(),
       "/clinics": createApiProxy(),
@@ -24,11 +26,13 @@ export default defineConfig({
       "/follow-ups": createApiProxy(),
       "/imports": createApiProxy(),
       "/message-templates": createApiProxy(),
+      "/admin": createApiProxy(),
       "/clinic-settings": createApiProxy(),
       "/doctor-schedules": createApiProxy(),
       "/responses": createApiProxy(),
     },
   },
+
   build: {
     rollupOptions: {
       output: {

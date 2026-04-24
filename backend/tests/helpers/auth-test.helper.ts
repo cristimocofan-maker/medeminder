@@ -25,7 +25,6 @@ export interface AuthenticatedSuiteContext {
 }
 
 export const loginWithCredentials = async (credentials: {
-  clinic_id: number;
   email: string;
   password: string;
 }): Promise<AuthenticatedTestContext> => {
@@ -52,7 +51,6 @@ export const createAuthenticatedContext = async (registry: CleanupRegistry): Pro
   const user = await createUserFixture(registry, clinic.clinic_id);
 
   return loginWithCredentials({
-    clinic_id: clinic.clinic_id,
     email: user.email,
     password: user.password,
   });
@@ -62,7 +60,6 @@ export const createSeededAuthenticatedContext = async (): Promise<AuthenticatedT
   const seededIdentity = await ensureSeededTestIdentity();
 
   return loginWithCredentials({
-    clinic_id: seededIdentity.clinic_id,
     email: seededIdentity.email,
     password: seededIdentity.password,
   });

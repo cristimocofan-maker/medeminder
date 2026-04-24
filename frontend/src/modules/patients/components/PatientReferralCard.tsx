@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CalendarPlus, LoaderCircle } from "lucide-react";
+import { ArrowRight, CalendarPlus, ChevronLeft, ChevronRight, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../../../api/client";
@@ -28,13 +28,48 @@ interface PatientReferralCardProps {
 
 interface LocalSlotItem {
   dayLabel: string;
+  dayValue: string;
   end: string;
   start: string;
   timeLabel: string;
 }
 
+interface AvailabilityDay {
+  value: string;
+  title: string;
+  display: string;
+  dayNumber: string;
+  fullLabel: string;
+  allSlots: Array<{ start: string; end: string; label: string }>;
+  availableSlots: Array<{ start: string; end: string; label: string }>;
+  schedule: DoctorScheduleDay | null;
+  isToday: boolean;
+}
+
+type AvailabilityViewMode = "week" | "month";
+
 const availabilityWeekdayFormatter = new Intl.DateTimeFormat("ro-RO", {
   weekday: "long",
+  day: "2-digit",
+  month: "short",
+});
+
+const availabilityWeekdayOnlyFormatter = new Intl.DateTimeFormat("ro-RO", {
+  weekday: "long",
+});
+
+const availabilityDayMonthFormatter = new Intl.DateTimeFormat("ro-RO", {
+  day: "2-digit",
+  month: "short",
+});
+
+const availabilityFullDateFormatter = new Intl.DateTimeFormat("ro-RO", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+const availabilityPeriodLabelFormatter = new Intl.DateTimeFormat("ro-RO", {
   day: "2-digit",
   month: "short",
 });
@@ -81,6 +116,14 @@ const addDays = (date: Date, amount: number): Date => {
 
 const toDateValue = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+const capitalizeText = (value: string): string => {
+  if (value.length === 0) {
+    return value;
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
 };
 
 const getScheduleWeekdayFromLocalDate = (dateValue: string): number | null => {
@@ -157,6 +200,53 @@ const formatDayLabel = (dateValue: string): string => {
   return availabilityWeekdayFormatter.format(new Date(`${dateValue}T00:00:00`)).replace(/\./g, "");
 };
 
+const formatAvailabilityWeekday = (date: Date): string => {
+  return capitalizeText(availabilityWeekdayOnlyFormatter.format(date).replace(/\./g, ""));
+};
+
+const formatAvailabilityDayMonth = (date: Date): string => {
+  return capitalizeText(availabilityDayMonthFormatter.format(date).replace(/\./g, ""));
+};
+
+const formatAvailabilityFullLabel = (date: Date): string => {
+  return capitalizeText(availabilityFullDateFormatter.format(date));
+};
+
+const buildAvailabilityRangeFromStart = (startDate: Date, dayCount: number): Array<{
+  value: string;
+  title: string;
+  display: string;
+  dayNumber: string;
+  fullLabel: string;
+  isToday: boolean;
+}> => {
+  const today = getStartOfDay(new Date());
+
+  return Array.from({ length: dayCount }, (_value, index) => {
+    const currentDate = addDays(startDate, index);
+
+    return {
+      value: toDateValue(currentDate),
+      title: formatAvailabilityWeekday(currentDate),
+      display: formatAvailabilityDayMonth(currentDate),
+      dayNumber: String(currentDate.getDate()).padStart(2, "0"),
+      fullLabel: formatAvailabilityFullLabel(currentDate),
+      isToday: toDateValue(currentDate) === toDateValue(today),
+    };
+  });
+};
+
+const buildAvailabilityPeriodLabel = (days: Array<{ value: string }>): string => {
+  if (days.length === 0) {
+    return "";
+  }
+
+  const startDate = new Date(`${days[0].value}T00:00:00`);
+  const endDate = new Date(`${days[days.length - 1].value}T00:00:00`);
+
+  return `${capitalizeText(availabilityPeriodLabelFormatter.format(startDate).replace(/\./g, ""))} - ${capitalizeText(availabilityPeriodLabelFormatter.format(endDate).replace(/\./g, ""))}`;
+};
+
 export const PatientReferralCard = ({
   initialDoctorId = null,
   initialSpecializationId = null,
@@ -169,6 +259,9 @@ export const PatientReferralCard = ({
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(initialSpecializationId);
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(initialDoctorId);
   const [selectedSlot, setSelectedSlot] = useState<LocalSlotItem | null>(null);
+  const [selectedAvailabilityDay, setSelectedAvailabilityDay] = useState("");
+  const [availabilityViewMode, setAvailabilityViewMode] = useState<AvailabilityViewMode>("week");
+  const [availabilityPeriodIndex, setAvailabilityPeriodIndex] = useState(0);
 
   const specializationsQuery = useQuery({
     queryKey: ["visit-specializations-options"],
@@ -237,12 +330,133 @@ export const PatientReferralCard = ({
     enabled: typeof selectedDoctorId === "number" && Number.isInteger(selectedDoctorId) && selectedDoctorId > 0,
   });
 
+  const doctorAppointments = useMemo(() => {
+    if (selectedDoctorId === null) {
+      return [];
+    }
+
+    return (appointmentsAvailabilityQuery.data ?? []).filter((appointment) => appointment.doctor_id === selectedDoctorId);
+  }, [appointmentsAvailabilityQuery.data, selectedDoctorId]);
+
+  const availabilityAnchorDate = useMemo(() => {
+    const today = getStartOfDay(new Date());
+
+    if (selectedDoctorId === null || doctorSchedulesQuery.data === undefined) {
+      return today;
+    }
+
+    const searchCandidates = buildAvailabilityRangeFromStart(today, 90);
+
+    for (const dayOption of searchCandidates) {
+      const weekday = getScheduleWeekdayFromLocalDate(dayOption.value);
+      const schedule = doctorSchedulesQuery.data.schedules.find((item) => item.weekday === weekday) ?? null;
+
+      if (schedule === null || !schedule.is_active) {
+        continue;
+      }
+
+      const nextAvailableSlots = buildQuickSlots(dayOption.value, schedule).filter((slot) => {
+        const isSelectedCurrentSlot = selectedSlot?.start === slot.start && selectedSlot.end === slot.end;
+
+        if (!isSelectedCurrentSlot && new Date(slot.start).getTime() < Date.now()) {
+          return false;
+        }
+
+        return !doctorAppointments.some((appointment) => intersectsWithAppointment(slot, appointment));
+      });
+
+      if (nextAvailableSlots.length > 0) {
+        return new Date(`${dayOption.value}T00:00:00`);
+      }
+    }
+
+    return today;
+  }, [doctorAppointments, doctorSchedulesQuery.data, selectedDoctorId, selectedSlot]);
+
+  const availabilityRange = useMemo(() => {
+    const periodLength = availabilityViewMode === "week" ? 7 : 30;
+    const periodStart = addDays(availabilityAnchorDate, availabilityPeriodIndex * periodLength);
+
+    return buildAvailabilityRangeFromStart(periodStart, periodLength);
+  }, [availabilityAnchorDate, availabilityPeriodIndex, availabilityViewMode]);
+
+  const availabilityDays = useMemo<AvailabilityDay[]>(() => {
+    if (selectedDoctorId === null || doctorSchedulesQuery.data === undefined) {
+      return [];
+    }
+
+    return availabilityRange.map((dayOption) => {
+      const weekday = getScheduleWeekdayFromLocalDate(dayOption.value);
+      const schedule = doctorSchedulesQuery.data.schedules.find((item) => item.weekday === weekday) ?? null;
+
+      if (schedule === null || !schedule.is_active) {
+        return {
+          ...dayOption,
+          schedule,
+          allSlots: [],
+          availableSlots: [],
+        };
+      }
+
+      const scheduleSlots = buildQuickSlots(dayOption.value, schedule);
+      const nextAvailableSlots = scheduleSlots.filter((slot) => {
+        const isSelectedCurrentSlot = selectedSlot?.start === slot.start && selectedSlot.end === slot.end;
+
+        if (!isSelectedCurrentSlot && new Date(slot.start).getTime() < Date.now()) {
+          return false;
+        }
+
+        return !doctorAppointments.some((appointment) => intersectsWithAppointment(slot, appointment));
+      });
+
+      return {
+        ...dayOption,
+        schedule,
+        allSlots: scheduleSlots.map((slot) => ({ start: slot.start, end: slot.end, label: slot.timeLabel })),
+        availableSlots: nextAvailableSlots.map((slot) => ({ start: slot.start, end: slot.end, label: slot.timeLabel })),
+      };
+    });
+  }, [availabilityRange, doctorAppointments, doctorSchedulesQuery.data, selectedDoctorId, selectedSlot]);
+
+  const hasAvailableSlotsInDisplayedPeriod = availabilityDays.some((day) => day.availableSlots.length > 0);
+  const availabilityTimeLabels = useMemo(() => {
+    const seenLabels = new Set<string>();
+    const orderedLabels: string[] = [];
+
+    availabilityDays.forEach((day) => {
+      day.allSlots.forEach((slot) => {
+        if (seenLabels.has(slot.label)) {
+          return;
+        }
+
+        seenLabels.add(slot.label);
+        orderedLabels.push(slot.label);
+      });
+    });
+
+    return orderedLabels;
+  }, [availabilityDays]);
+
+  const availabilitySlotsByDay = useMemo(() => {
+    return new Map(
+      availabilityDays.map((day) => [
+        day.value,
+        {
+          all: new Map(day.allSlots.map((slot) => [slot.label, slot])),
+          available: new Map(day.availableSlots.map((slot) => [slot.label, slot])),
+        },
+      ]),
+    );
+  }, [availabilityDays]);
+
+  const availabilityPeriodLabel = useMemo(() => buildAvailabilityPeriodLabel(availabilityRange), [availabilityRange]);
+  const activeAvailabilityDay = selectedSlot?.dayValue ?? selectedAvailabilityDay;
+
   const availableSlots = useMemo<LocalSlotItem[]>(() => {
     if (selectedDoctorId === null || doctorSchedulesQuery.data === undefined) {
       return [];
     }
 
-    const appointments = (appointmentsAvailabilityQuery.data ?? []).filter((appointment) => appointment.doctor_id === selectedDoctorId);
     const today = getStartOfDay(new Date());
     const slots: LocalSlotItem[] = [];
 
@@ -266,7 +480,7 @@ export const PatientReferralCard = ({
           return false;
         }
 
-        return !appointments.some((appointment) => intersectsWithAppointment(slot, appointment));
+        return !doctorAppointments.some((appointment) => intersectsWithAppointment(slot, appointment));
       });
 
       dailySlots.forEach((slot) => {
@@ -277,12 +491,13 @@ export const PatientReferralCard = ({
         slots.push({
           ...slot,
           dayLabel: formatDayLabel(dateValue),
+          dayValue: dateValue,
         });
       });
     }
 
     return slots;
-  }, [appointmentsAvailabilityQuery.data, doctorSchedulesQuery.data, selectedDoctorId]);
+  }, [doctorAppointments, doctorSchedulesQuery.data, selectedDoctorId]);
 
   useEffect(() => {
     if (selectedSlot === null) {
@@ -356,44 +571,185 @@ export const PatientReferralCard = ({
         </div>
       </div>
 
-      <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Primele sloturi disponibile</p>
-          {doctorSchedulesQuery.isLoading || appointmentsAvailabilityQuery.isLoading ? (
-            <span className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-              Încărcăm
-            </span>
-          ) : null}
+      <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 md:p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h4 className="text-lg font-semibold text-ink">Alege intervalul</h4>
+          {selectedDoctorId !== null ? <span className="text-sm text-slate-500">Săptămână / lună</span> : null}
         </div>
 
-        {selectedDoctorId === null ? (
-          <div className="mt-4 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-            Alege medicul țintă pentru a vedea sloturile reale disponibile.
-          </div>
-        ) : availableSlots.length === 0 ? (
-          <div className="mt-4 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-            Nu am găsit sloturi libere în intervalul următor.
-          </div>
-        ) : (
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {availableSlots.map((slot) => {
-              const isSelected = selectedSlot?.start === slot.start && selectedSlot.end === slot.end;
+        <div className="min-h-[320px]">
+          {selectedDoctorId === null ? (
+            <div className="flex min-h-[220px] items-center rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900">
+              <p className="font-semibold">Alege mai întâi medicul pentru a vedea calendarul complet.</p>
+            </div>
+          ) : doctorSchedulesQuery.isLoading || appointmentsAvailabilityQuery.isLoading ? (
+            <div className="flex min-h-[220px] items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-primary">
+              <div className="flex items-center gap-3">
+                <LoaderCircle className="h-5 w-5 animate-spin" />
+                <span className="font-semibold">Încărcăm programul doctorului și intervalele ocupate</span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="inline-flex rounded-2xl bg-[#edf7f6] p-1">
+                  <button
+                    className={`min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold transition ${availabilityViewMode === "week" ? "bg-[#2f8885] text-white shadow-md shadow-[#2f8885]/20" : "text-[#406b69] hover:bg-white/70"}`}
+                    onClick={() => {
+                      setAvailabilityViewMode("week");
+                      setAvailabilityPeriodIndex(0);
+                    }}
+                    type="button"
+                  >
+                    Săptămână
+                  </button>
+                  <button
+                    className={`min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold transition ${availabilityViewMode === "month" ? "bg-[#2f8885] text-white shadow-md shadow-[#2f8885]/20" : "text-[#406b69] hover:bg-white/70"}`}
+                    onClick={() => {
+                      setAvailabilityViewMode("month");
+                      setAvailabilityPeriodIndex(0);
+                    }}
+                    type="button"
+                  >
+                    Lună
+                  </button>
+                </div>
 
-              return (
-                <button
-                  className={`rounded-3xl border px-4 py-4 text-left transition ${isSelected ? theme.selectedChipClassName : theme.idleChipClassName}`}
-                  key={slot.start}
-                  onClick={() => setSelectedSlot(slot)}
-                  type="button"
-                >
-                  <p className="text-sm font-semibold">{slot.dayLabel}</p>
-                  <p className="mt-2 text-lg font-semibold">{slot.timeLabel}</p>
-                </button>
-              );
-            })}
-          </div>
-        )}
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                  <span className="rounded-full bg-[#eef7f6] px-3 py-1.5 font-semibold text-[#285f5c]">{availabilityPeriodLabel}</span>
+                  <button
+                    className="button-secondary min-h-11 gap-2 px-4 py-2"
+                    onClick={() => setAvailabilityPeriodIndex((currentValue) => currentValue - 1)}
+                    type="button"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Anterior
+                  </button>
+                  <button
+                    className="button-primary min-h-11 gap-2 px-4 py-2"
+                    onClick={() => setAvailabilityPeriodIndex((currentValue) => currentValue + 1)}
+                    type="button"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <span className="inline-flex items-center gap-2 rounded-full bg-[#eff7f6] px-3 py-1.5 text-[#356663]">
+                  <span className="h-3 w-3 rounded-full bg-[#74c9c1]" />
+                  Disponibil
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-[#f3f6f5] px-3 py-1.5 text-slate-500">
+                  <span className="h-3 w-3 rounded-full bg-[#cfd9d7]" />
+                  Indisponibil
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-[#dff3f1] px-3 py-1.5 text-[#245c59]">
+                  <span className="h-3 w-3 rounded-full bg-[#2f8885]" />
+                  Selectat
+                </span>
+              </div>
+
+              {availabilityTimeLabels.length === 0 ? (
+                <div className="flex min-h-[220px] items-center rounded-[28px] border border-[#d6e7e5] bg-[#f7fbfb] px-4 py-3 text-[#5c7572]">
+                  <p className="font-semibold">Doctorul nu are intervale active în perioada afișată.</p>
+                </div>
+              ) : (
+                <div className="w-full rounded-[30px] border border-[#d7ebe8] bg-[linear-gradient(180deg,#fdfefe_0%,#f5fbfa_100%)] p-2 lg:p-3">
+                  <div className="w-full overflow-x-auto">
+                    <div
+                      className="grid w-full min-w-[980px] gap-1.5 lg:gap-2"
+                      style={{
+                        gridTemplateColumns: `132px repeat(${availabilityTimeLabels.length}, minmax(72px, 1fr))`,
+                      }}
+                    >
+                      <div className="sticky left-0 z-20 flex min-h-[56px] items-center rounded-[18px] border border-white/80 bg-white/95 px-3 shadow-sm lg:min-h-[64px] lg:rounded-[22px] lg:px-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Zi</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-600 lg:text-sm">Program</p>
+                        </div>
+                      </div>
+
+                      {availabilityTimeLabels.map((timeLabel) => (
+                        <div
+                          className="flex min-h-[56px] items-center justify-center rounded-[18px] border border-white/80 bg-white/95 px-1 text-center text-[10px] font-semibold text-slate-700 shadow-sm lg:min-h-[64px] lg:rounded-[22px] lg:px-2 lg:text-sm"
+                          key={`referral-header-${timeLabel}`}
+                        >
+                          {timeLabel}
+                        </div>
+                      ))}
+
+                      {availabilityDays.map((day) => {
+                        const isSelectedDay = activeAvailabilityDay === day.value;
+                        const monthLabel = day.display.startsWith(day.dayNumber) ? day.display.slice(day.dayNumber.length).trim() : day.display;
+
+                        return (
+                          <div className="contents" key={`referral-day-row-${day.value}`}>
+                            <button
+                              className={`sticky left-0 z-10 flex min-h-[58px] items-center rounded-[18px] border px-3 text-left transition lg:min-h-[70px] lg:rounded-[22px] lg:px-4 ${isSelectedDay ? "border-[#6cbeb8] bg-[#def2f0] text-[#1f5350] shadow-sm" : day.isToday ? "border-[#bcdedb] bg-[#f0f8f7] text-[#356663]" : "border-white/80 bg-white/95 text-slate-600 shadow-sm hover:border-[#b8dfdb] hover:bg-[#f5fbfa]"}`}
+                              onClick={() => setSelectedAvailabilityDay(day.value)}
+                              type="button"
+                            >
+                              <div>
+                                <span className="block text-xs font-semibold lg:text-sm">{day.title}</span>
+                                <span className="mt-1 block text-[11px] opacity-80 lg:text-sm">{day.dayNumber} {monthLabel}</span>
+                              </div>
+                            </button>
+
+                            {availabilityTimeLabels.map((timeLabel) => {
+                              const daySlots = availabilitySlotsByDay.get(day.value);
+                              const availableSlot = daySlots?.available.get(timeLabel) ?? null;
+                              const scheduledSlot = daySlots?.all.get(timeLabel) ?? null;
+                              const highlightedSlot = availableSlot ?? scheduledSlot;
+                              const isSelectedSlot = highlightedSlot !== null && selectedSlot?.start === highlightedSlot.start && selectedSlot.end === highlightedSlot.end;
+
+                              if (availableSlot !== null) {
+                                return (
+                                  <button
+                                    aria-label={`${day.fullLabel} ${availableSlot.label}`}
+                                    className={`min-h-[58px] rounded-[18px] border px-1 text-[10px] font-semibold transition lg:min-h-[70px] lg:rounded-[22px] lg:text-sm ${isSelectedSlot ? "border-[#2f8885] bg-[#2f8885] text-white shadow-md shadow-[#2f8885]/25" : "border-[#84cbc4] bg-[#afe3dd] text-[#1f5653] hover:border-[#5db8b1] hover:bg-[#88d4cc]"}`}
+                                    key={`referral-slot-${day.value}-${timeLabel}`}
+                                    onClick={() => {
+                                      setSelectedAvailabilityDay(day.value);
+                                      setSelectedSlot({
+                                        dayLabel: formatDayLabel(day.value),
+                                        dayValue: day.value,
+                                        end: availableSlot.end,
+                                        start: availableSlot.start,
+                                        timeLabel: availableSlot.label,
+                                      });
+                                    }}
+                                    type="button"
+                                  >
+                                    {availableSlot.label}
+                                  </button>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  className={`min-h-[58px] rounded-[18px] border lg:min-h-[70px] lg:rounded-[22px] ${scheduledSlot !== null ? "border-[#d2dbda] bg-[#edf2f1]" : "border-[#edf2f1] bg-[#f8fbfa]"}`}
+                                  key={`referral-empty-${day.value}-${timeLabel}`}
+                                />
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!hasAvailableSlotsInDisplayedPeriod && availabilityTimeLabels.length > 0 ? (
+                <div className="rounded-[24px] border border-[#d8e3e1] bg-[#f6f9f8] px-4 py-3 text-sm font-semibold text-slate-500">
+                  În perioada afișată toate sloturile sunt ocupate, în trecut sau în afara programului activ.
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-4 xl:flex-row xl:items-center xl:justify-between">
@@ -435,7 +791,7 @@ export const PatientReferralCard = ({
               nextSearchParams.set("patient_id", String(prefillPatientId));
             }
 
-            navigate(`/programari/nou?${nextSearchParams.toString()}`);
+            navigate(`/programari/nou_1?${nextSearchParams.toString()}`);
           }}
           type="button"
         >

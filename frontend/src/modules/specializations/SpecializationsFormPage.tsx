@@ -1,14 +1,24 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { AlertCircle, ArrowLeft, LoaderCircle, Save, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowLeft, LoaderCircle, Plus, Save } from "lucide-react";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { confirmFormSave } from "../../shared/utils/confirm-actions";
 import { useToast } from "../../shared/ui/toast-provider";
 import type { ApiErrorResponse } from "../../shared/types/api";
-import { createSpecialization, getSpecializationById, updateSpecialization } from "./specializations.api";
+import {
+  createSpecialization,
+  createSpecializationService,
+  deleteSpecializationService,
+  getSpecializationById,
+  listSpecializationServices,
+  updateSpecialization,
+  updateSpecializationService,
+} from "./specializations.api";
+import { SpecializationServicesEditor } from "./components/SpecializationServicesEditor";
+import type { SpecializationServiceMutationPayload } from "./specializations.types";
 import { specializationFormSchema, type SpecializationFormValues } from "./specializations.schema";
 
 const defaultValues: SpecializationFormValues = {
@@ -53,6 +63,12 @@ export const SpecializationsFormPage = (): JSX.Element => {
   const specializationQuery = useQuery({
     queryKey: ["specialization", specializationId],
     queryFn: async () => getSpecializationById(specializationId as number),
+    enabled: isEditMode && Number.isInteger(specializationId) && (specializationId as number) > 0,
+  });
+
+  const specializationServicesQuery = useQuery({
+    queryKey: ["specialization-services", specializationId],
+    queryFn: async () => listSpecializationServices(specializationId as number),
     enabled: isEditMode && Number.isInteger(specializationId) && (specializationId as number) > 0,
   });
 
@@ -103,6 +119,60 @@ export const SpecializationsFormPage = (): JSX.Element => {
         });
       }
       mapApiErrorToForm(error, setError);
+    },
+  });
+
+  const serviceMutation = useMutation({
+    mutationFn: async (input: { payload: SpecializationServiceMutationPayload; serviceId?: number }) => {
+      if (specializationId === null) {
+        throw new Error("Specializarea trebuie salvată înainte de servicii.");
+      }
+
+      if (input.serviceId === undefined) {
+        return createSpecializationService(specializationId, input.payload);
+      }
+
+      return updateSpecializationService(specializationId, input.serviceId, input.payload);
+    },
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["specialization-services", specializationId], refetchType: "all" });
+      showToast({
+        variant: "success",
+        title: variables.serviceId === undefined ? "Serviciu adăugat" : "Serviciu actualizat",
+        description: "Lista serviciilor a fost actualizată din DB.",
+      });
+    },
+    onError: (error: unknown) => {
+      showToast({
+        variant: "error",
+        title: "Nu am putut salva serviciul",
+        description: error instanceof AxiosError ? (error.response?.data.message ?? "Încearcă din nou.") : "Încearcă din nou.",
+      });
+    },
+  });
+
+  const serviceDeleteMutation = useMutation({
+    mutationFn: async (serviceId: number) => {
+      if (specializationId === null) {
+        throw new Error("Specializarea trebuie salvată înainte de servicii.");
+      }
+
+      return deleteSpecializationService(specializationId, serviceId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["specialization-services", specializationId], refetchType: "all" });
+      showToast({
+        variant: "success",
+        title: "Serviciu șters",
+        description: "Lista serviciilor a fost actualizată din DB.",
+      });
+    },
+    onError: (error: unknown) => {
+      showToast({
+        variant: "error",
+        title: "Nu am putut șterge serviciul",
+        description: error instanceof AxiosError ? (error.response?.data.message ?? "Încearcă din nou.") : "Încearcă din nou.",
+      });
     },
   });
 
@@ -159,7 +229,6 @@ export const SpecializationsFormPage = (): JSX.Element => {
         <div>
           <span className="badge-soft">{isEditMode ? "Editare specializare" : "Specializare nouă"}</span>
           <h2 className="mt-4">{isEditMode ? "Actualizează specializarea" : "Adaugă o specializare nouă"}</h2>
-          <p className="mt-3 max-w-3xl">Clinic scope este gestionat exclusiv de backend. În frontend lucrăm doar cu `specialization_id` numeric pentru identificare.</p>
         </div>
 
         <Link className="button-secondary gap-2" to="/specializari">
@@ -168,7 +237,7 @@ export const SpecializationsFormPage = (): JSX.Element => {
         </Link>
       </div>
 
-      <form className="mt-8 space-y-6" noValidate onSubmit={handleSubmit((values) => {
+      <form className="mt-6 space-y-5" noValidate onSubmit={handleSubmit((values) => {
         if (!confirmFormSave("specializare", isEditMode)) {
           return;
         }
@@ -186,7 +255,6 @@ export const SpecializationsFormPage = (): JSX.Element => {
             placeholder="Exemplu: Cardiologie"
             {...register("specialization_display_name")}
           />
-          <p className="mt-2 text-sm text-slate-500">Acest nume este trimis exclusiv către endpointul real `/specializations`.</p>
           {errors.specialization_display_name !== undefined ? (
             <p className="mt-2 text-sm font-medium text-danger">{errors.specialization_display_name.message}</p>
           ) : null}
@@ -208,18 +276,49 @@ export const SpecializationsFormPage = (): JSX.Element => {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Sparkles className="h-4 w-4 text-primary" />
-            După salvare revii automat la lista reală de specializări.
-          </div>
-
+        <div className="flex justify-end">
           <button className="button-primary gap-2" disabled={mutation.isPending || isSubmitting} type="submit">
             {mutation.isPending ? "Salvăm..." : isEditMode ? "Salvează modificările" : "Adaugă specializarea"}
             <Save className="h-5 w-5" />
           </button>
         </div>
       </form>
+
+      {isEditMode && specializationId !== null ? (
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          {specializationServicesQuery.isLoading ? (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+              Încărcăm serviciile specializării...
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {specializationServicesQuery.isError ? (
+                <div className="rounded-[24px] border border-danger/20 bg-orange-50 px-4 py-4 text-sm text-danger">
+                  Nu am putut încărca serviciile specializării. Poți încerca din nou sau poți adăuga un serviciu nou.
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-ink">Servicii</h3>
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                  {specializationServicesQuery.data?.length ?? 0} servicii
+                </div>
+              </div>
+              <SpecializationServicesEditor
+                isBusy={serviceMutation.isPending || serviceDeleteMutation.isPending}
+                onDeleteService={(serviceId) => serviceDeleteMutation.mutate(serviceId)}
+                onSaveService={(payload, serviceId) => serviceMutation.mutate({ payload, serviceId })}
+                services={specializationServicesQuery.data ?? []}
+                specializationId={specializationId}
+                specializationName={specializationQuery.data?.specialization_display_name ?? "Specializare"}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-6 rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+          Salvează mai întâi specializarea, apoi poți adăuga servicii.
+        </div>
+      )}
     </section>
   );
 };

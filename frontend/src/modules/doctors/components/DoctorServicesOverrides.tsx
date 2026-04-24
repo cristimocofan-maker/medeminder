@@ -1,8 +1,9 @@
-import { PenLine, Plus, Trash2, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { PenLine, Plus, Save, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DoctorListItem } from "../doctors.types";
-import { useSpecializationServicesRegistry } from "../../specializations/components/specialization-services.store";
+import { listSpecializationServices } from "../../specializations/specializations.api";
 import { getSpecializationTheme } from "../../specializations/components/specialization-theme";
 import {
   buildDoctorServiceOverrideId,
@@ -12,7 +13,10 @@ import {
 import { resolveDoctorServices } from "./resolve-doctor-services";
 
 interface DoctorServicesOverridesProps {
+  canSave: boolean;
   doctor: Pick<DoctorListItem, "doctor_display_name" | "doctor_id" | "specialization_id">;
+  formId: string;
+  isSaving: boolean;
   specializationName: string;
 }
 
@@ -30,11 +34,29 @@ const buildExclusiveDraft = (doctorId: number): DoctorServiceOverrideRecord => (
   is_active: true,
 });
 
-export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorServicesOverridesProps): JSX.Element => {
+const resolveServiceAvailability = (
+  service: { is_active: boolean },
+  override?: DoctorServiceOverrideRecord,
+): boolean => {
+  if (override === undefined) {
+    return service.is_active;
+  }
+
+  if (override.use_default && override.is_active === undefined) {
+    return service.is_active;
+  }
+
+  return override.is_active ?? service.is_active;
+};
+
+export const DoctorServicesOverrides = ({ canSave, doctor, formId, isSaving, specializationName }: DoctorServicesOverridesProps): JSX.Element => {
   const overlayRoot = typeof document === "undefined" ? null : document.body;
   const theme = getSpecializationTheme(specializationName);
-  const { getServices } = useSpecializationServicesRegistry();
   const { deleteOverride, getOverrides, upsertOverride } = useDoctorServiceOverridesRegistry();
+  const specializationServicesQuery = useQuery({
+    queryKey: ["specialization-services", doctor.specialization_id],
+    queryFn: async () => listSpecializationServices(doctor.specialization_id),
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [exclusiveDraft, setExclusiveDraft] = useState<DoctorServiceOverrideRecord>(buildExclusiveDraft(doctor.doctor_id));
@@ -54,7 +76,7 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
     };
   }, [isModalOpen]);
 
-  const specializationServices = useMemo(() => getServices(doctor.specialization_id), [doctor.specialization_id, getServices]);
+  const specializationServices = specializationServicesQuery.data ?? [];
   const overrides = useMemo(() => getOverrides(doctor.doctor_id), [doctor.doctor_id, getOverrides]);
   const resolvedServices = useMemo(() => resolveDoctorServices(doctor, specializationServices, overrides), [doctor, overrides, specializationServices]);
 
@@ -67,7 +89,7 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
     [overrides],
   );
 
-  const updateDefaultOverride = (serviceId: string, nextPartial: Partial<DoctorServiceOverrideRecord>): void => {
+  const updateDefaultOverride = (serviceId: number, nextPartial: Partial<DoctorServiceOverrideRecord>): void => {
     const currentOverride = inheritedOverrides.find((override) => override.service_id === serviceId);
 
     upsertOverride({
@@ -84,86 +106,113 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
   };
 
   return (
-    <section className={`rounded-[32px] border ${theme.borderClassName} ${theme.surfaceClassName} p-5 md:p-6`}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${theme.badgeClassName}`}>
-            Servicii și prețuri
-          </span>
-          <h3 className="mt-4 text-xl font-semibold text-ink">{doctor.doctor_display_name}</h3>
-          <p className="mt-2 text-sm text-slate-500">Override opțional peste serviciile implicite ale specializării.</p>
-        </div>
-
+    <section className={`rounded-[28px] border ${theme.borderClassName} ${theme.surfaceClassName} p-4 md:p-5`}>
+      <div className="flex justify-end">
         <button
-          className="button-primary gap-2 whitespace-nowrap"
+          className="button-primary gap-2 whitespace-nowrap px-4 py-2 text-sm"
           onClick={() => {
             setExclusiveDraft(buildExclusiveDraft(doctor.doctor_id));
             setIsModalOpen(true);
           }}
           type="button"
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-4 w-4" />
           Adaugă serviciu exclusiv pentru acest medic
         </button>
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-4 space-y-2.5">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Servicii moștenite din specializare</p>
-          <p className="mt-2 text-sm text-slate-500">Fiecare serviciu este disponibil implicit, iar medicul poate seta rapid propriul preț sau propriile reguli.</p>
+        </div>
+
+        <div className="hidden rounded-[20px] border border-slate-200/80 bg-white/70 px-4 py-2.5 xl:grid xl:grid-cols-[minmax(0,1fr)_160px_124px_112px_auto] xl:items-center xl:gap-2.5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Serviciu</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Preț</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Durată</span>
+          <span className="text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Prestează</span>
+          <span className="text-right text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Configurare</span>
         </div>
 
         {specializationServices.map((service) => {
-          const override = inheritedOverrides.find((currentOverride) => currentOverride.service_id === service.id);
+          const override = inheritedOverrides.find((currentOverride) => currentOverride.service_id === service.service_id);
           const usesDefault = override === undefined || override.use_default;
-          const resolvedService = resolvedServices.find((currentService) => currentService.service_id === service.id);
+          const isPerformedByDoctor = resolveServiceAvailability(service, override);
+          const hasCustomConfiguration = override !== undefined && override.use_default === false;
+          const resolvedService = resolvedServices.find((currentService) => currentService.service_id === service.service_id);
 
           return (
-            <div className="rounded-3xl border border-white/80 bg-white/85 p-4 shadow-sm" key={service.id}>
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-base font-semibold text-ink">{service.name}</p>
-                    <span className={`rounded-full px-3 py-1 text-sm font-semibold ${theme.badgeClassName}`}>
-                      implicit {formatPrice(service.price)}
-                    </span>
-                    <span className={`rounded-full px-3 py-1 text-sm font-semibold ${theme.subtleBadgeClassName}`}>
-                      {service.duration_minutes !== undefined ? `${service.duration_minutes} min` : "durată liberă"}
-                    </span>
-                  </div>
-                  {service.description !== undefined ? <p className="mt-2 text-sm text-slate-500">{service.description}</p> : null}
+            <div className={`rounded-[26px] border border-white/80 px-4 py-3 shadow-sm transition ${isPerformedByDoctor ? "bg-white/85" : "bg-slate-50/95"}`} key={service.service_id}>
+              <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_160px_124px_112px_auto] xl:items-center">
+                <div className="min-w-0">
+                  <p className={`text-[15px] font-semibold ${isPerformedByDoctor ? "text-ink" : "text-slate-500"}`}>{service.service_name}</p>
+                  {service.description !== undefined ? <p className="mt-1 text-xs text-slate-500">{service.description}</p> : null}
                 </div>
 
-                <button
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${usesDefault ? theme.selectedChipClassName : theme.idleChipClassName}`}
-                  onClick={() => {
-                    if (usesDefault) {
-                      updateDefaultOverride(service.id, {
-                        use_default: false,
-                        custom_name: undefined,
-                        custom_price: service.price,
-                        custom_duration_minutes: service.duration_minutes,
-                        is_active: service.is_active,
-                      });
-                      return;
-                    }
+                <div className="flex flex-col gap-1 xl:items-start">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${theme.badgeClassName}`}>
+                    implicit {formatPrice(service.price)}
+                  </span>
+                </div>
 
-                    updateDefaultOverride(service.id, {
-                      use_default: true,
-                      custom_name: undefined,
-                      custom_price: undefined,
-                      custom_duration_minutes: undefined,
-                      is_active: undefined,
-                    });
-                  }}
-                  type="button"
-                >
-                  {usesDefault ? "Setează pentru medic" : "Revino la implicit"}
-                </button>
+                <div className="flex flex-col gap-1 xl:items-start">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${theme.subtleBadgeClassName}`}>
+                    {service.duration_minutes !== undefined ? `${service.duration_minutes} min` : "durată liberă"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 xl:justify-center">
+                  <button
+                    aria-label={isPerformedByDoctor ? "Medicul prestează serviciul" : "Medicul nu prestează serviciul"}
+                    className={`relative inline-flex h-8 w-[50px] items-center rounded-full border transition ${isPerformedByDoctor ? "border-primary/40 bg-primarySoft" : "border-slate-200 bg-slate-100"}`}
+                    onClick={() => updateDefaultOverride(service.service_id, {
+                      use_default: override?.use_default ?? true,
+                      custom_name: override?.custom_name,
+                      custom_price: override?.custom_price,
+                      custom_duration_minutes: override?.custom_duration_minutes,
+                      is_active: !isPerformedByDoctor,
+                    })}
+                    type="button"
+                  >
+                    <span className={`absolute left-1 h-6 w-6 rounded-full shadow-sm transition ${isPerformedByDoctor ? "translate-x-[18px] bg-primary" : "translate-x-0 bg-slate-400"}`} />
+                  </button>
+                  <span className={`text-xs font-semibold ${isPerformedByDoctor ? "text-primary" : "text-slate-500"}`}>
+                    {isPerformedByDoctor ? "Da" : "Nu"}
+                  </span>
+                </div>
+
+                <div className="flex xl:justify-end">
+                  <button
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition xl:self-center ${hasCustomConfiguration ? theme.idleChipClassName : theme.selectedChipClassName}`}
+                    onClick={() => {
+                      if (usesDefault) {
+                        updateDefaultOverride(service.service_id, {
+                          use_default: false,
+                          custom_name: undefined,
+                          custom_price: service.price,
+                          custom_duration_minutes: service.duration_minutes,
+                          is_active: override?.is_active ?? service.is_active,
+                        });
+                        return;
+                      }
+
+                      updateDefaultOverride(service.service_id, {
+                        use_default: true,
+                        custom_name: undefined,
+                        custom_price: undefined,
+                        custom_duration_minutes: undefined,
+                        is_active: undefined,
+                      });
+                    }}
+                    type="button"
+                  >
+                    {hasCustomConfiguration ? "Revino la implicit" : "Setează pentru medic"}
+                  </button>
+                </div>
               </div>
 
-              {!usesDefault && override !== undefined ? (
-                <div className={`mt-4 grid gap-4 rounded-3xl border ${theme.softPanelClassName} p-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_140px_140px_auto]`}>
+              {hasCustomConfiguration && override !== undefined ? (
+                <div className={`mt-3 grid gap-3 rounded-[24px] border ${theme.softPanelClassName} p-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_160px_124px_112px_auto] xl:items-end`}>
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-slate-500" htmlFor={`doctor-service-name-${override.id}`}>
                       Nume serviciu
@@ -171,8 +220,8 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
                     <input
                       className="input-base"
                       id={`doctor-service-name-${override.id}`}
-                      onChange={(event) => updateDefaultOverride(service.id, { custom_name: event.target.value, use_default: false })}
-                      value={override.custom_name ?? service.name}
+                      onChange={(event) => updateDefaultOverride(service.service_id, { custom_name: event.target.value, use_default: false })}
+                      value={override.custom_name ?? service.service_name}
                     />
                   </div>
 
@@ -184,7 +233,7 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
                       className="input-base"
                       id={`doctor-service-price-${override.id}`}
                       inputMode="decimal"
-                      onChange={(event) => updateDefaultOverride(service.id, { custom_price: Number(event.target.value.replace(/,/g, ".")) || 0, use_default: false })}
+                      onChange={(event) => updateDefaultOverride(service.service_id, { custom_price: Number(event.target.value.replace(/,/g, ".")) || 0, use_default: false })}
                       value={String(override.custom_price ?? service.price)}
                     />
                   </div>
@@ -199,7 +248,7 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
                       inputMode="numeric"
                       onChange={(event) => {
                         const nextValue = event.target.value.trim();
-                        updateDefaultOverride(service.id, {
+                        updateDefaultOverride(service.service_id, {
                           custom_duration_minutes: nextValue === "" ? undefined : Number(nextValue),
                           use_default: false,
                         });
@@ -208,27 +257,22 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
                     />
                   </div>
 
-                  <div className="flex items-end justify-start gap-2 xl:justify-end">
+                  <div className="hidden xl:block" />
+                  <div className="flex items-end justify-start xl:justify-end">
                     <button
-                      className={`relative inline-flex h-10 w-[58px] items-center rounded-full border transition ${(override.is_active ?? service.is_active) ? "border-primary/40 bg-primarySoft" : "border-slate-200 bg-slate-100"}`}
-                      onClick={() => updateDefaultOverride(service.id, {
-                        is_active: !(override.is_active ?? service.is_active),
-                        use_default: false,
+                      className="button-secondary min-h-10 rounded-full px-4 py-2 text-sm"
+                      onClick={() => updateDefaultOverride(service.service_id, {
+                        use_default: true,
+                        custom_name: undefined,
+                        custom_price: undefined,
+                        custom_duration_minutes: undefined,
+                        is_active: override.is_active,
                       })}
                       type="button"
                     >
-                      <span className={`absolute left-1 h-8 w-8 rounded-full shadow-sm transition ${(override.is_active ?? service.is_active) ? "translate-x-[18px] bg-primary" : "translate-x-0 bg-slate-400"}`} />
+                      Anulează personalizarea
                     </button>
                   </div>
-                </div>
-              ) : null}
-
-              {!usesDefault && resolvedService !== undefined ? (
-                <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                  <span className={`rounded-full px-3 py-1 font-semibold ${theme.badgeClassName}`}>{formatPrice(resolvedService.price)}</span>
-                  {resolvedService.duration_minutes !== undefined ? (
-                    <span className={`rounded-full px-3 py-1 font-semibold ${theme.subtleBadgeClassName}`}>{resolvedService.duration_minutes} min</span>
-                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -240,18 +284,24 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Servicii exclusive</p>
             {exclusiveOverrides.map((override) => (
               <div className="rounded-3xl border border-white/80 bg-white/85 p-4 shadow-sm" key={override.id}>
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold text-ink">{override.custom_name ?? "Serviciu exclusiv"}</p>
-                      <span className={`rounded-full px-3 py-1 font-semibold ${theme.badgeClassName}`}>{formatPrice(override.custom_price ?? 0)}</span>
-                      {override.custom_duration_minutes !== undefined ? (
-                        <span className={`rounded-full px-3 py-1 font-semibold ${theme.subtleBadgeClassName}`}>{override.custom_duration_minutes} min</span>
-                      ) : null}
-                    </div>
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_160px_124px_112px_auto] xl:items-center">
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold text-ink">{override.custom_name ?? "Serviciu exclusiv"}</p>
                   </div>
 
-                  <div className="flex shrink-0 gap-2 self-end md:self-auto">
+                  <div className="flex xl:justify-start">
+                    <span className={`rounded-full px-3 py-1 font-semibold ${theme.badgeClassName}`}>{formatPrice(override.custom_price ?? 0)}</span>
+                  </div>
+
+                  <div className="flex xl:justify-start">
+                    {override.custom_duration_minutes !== undefined ? (
+                      <span className={`rounded-full px-3 py-1 font-semibold ${theme.subtleBadgeClassName}`}>{override.custom_duration_minutes} min</span>
+                    ) : null}
+                  </div>
+
+                  <div className="hidden xl:block" />
+
+                  <div className="flex shrink-0 gap-2 self-end md:self-auto xl:justify-end">
                     <button className="button-secondary min-h-10 px-3 py-2 text-sm" onClick={() => {
                       setExclusiveDraft(override);
                       setIsModalOpen(true);
@@ -267,6 +317,13 @@ export const DoctorServicesOverrides = ({ doctor, specializationName }: DoctorSe
             ))}
           </div>
         ) : null}
+
+        <div className="flex justify-end pt-2">
+          <button className="button-primary gap-2" disabled={!canSave} form={formId} type="submit">
+            {isSaving ? "Salvăm..." : "Salvează modificările"}
+            <Save className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {isModalOpen && overlayRoot !== null ? createPortal(

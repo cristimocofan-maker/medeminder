@@ -1,4 +1,4 @@
-import { CheckCircle2, SendHorizonal } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, SendHorizonal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { SMS_TEMPLATE_DEFINITIONS, formatSmsTimestamp, renderSmsMessage } from "../sms-gateway.local";
 import type { SmsHistoryItem, SmsMessageContext, SmsTemplateKey } from "../sms-gateway.types";
@@ -11,6 +11,7 @@ interface SmsPatientCardProps {
   templates: Record<SmsTemplateKey, string>;
   previewContext: SmsMessageContext;
   defaultTemplateKey?: SmsTemplateKey;
+  collapsedByDefault?: boolean;
   onSend: (payload: {
     patient_id: number;
     phone_number: string;
@@ -27,10 +28,12 @@ export const SmsPatientCard = ({
   templates,
   previewContext,
   defaultTemplateKey = "confirmation",
+  collapsedByDefault = false,
   onSend,
 }: SmsPatientCardProps): JSX.Element => {
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<SmsTemplateKey>(defaultTemplateKey);
   const [lastSent, setLastSent] = useState<SmsHistoryItem | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(collapsedByDefault);
 
   const generatedMessage = useMemo(() => renderSmsMessage(templates[selectedTemplateKey], previewContext), [previewContext, selectedTemplateKey, templates]);
 
@@ -55,14 +58,33 @@ export const SmsPatientCard = ({
 
   return (
     <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-      <div>
-        <span className="badge-soft">SMS pacient</span>
-        <h3 className="mt-4 text-2xl font-semibold text-ink">{title}</h3>
-        <p className="mt-3 text-sm leading-6 text-slate-500">
-          {subtitle ?? "Previzualizezi mesajul și îl pregătești exact cu datele reale deja încărcate în pagină."}
-        </p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <span className="badge-soft">SMS pacient</span>
+          <h3 className="mt-4 text-2xl font-semibold text-ink">{title}</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {subtitle ?? "Previzualizezi mesajul și îl pregătești exact cu datele reale deja încărcate în pagină."}
+          </p>
+        </div>
+
+        <button
+          aria-expanded={!isCollapsed}
+          className="button-secondary gap-2 self-start px-4 py-2 text-sm"
+          onClick={() => setIsCollapsed((currentValue) => !currentValue)}
+          type="button"
+        >
+          {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          {isCollapsed ? "Deschide zona SMS" : "Restrânge zona SMS"}
+        </button>
       </div>
 
+      {isCollapsed ? (
+        <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
+          <span className="text-sm font-semibold text-slate-700">{phoneNumber.trim() === "" ? "Fără număr pacient" : phoneNumber}</span>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">Template: {SMS_TEMPLATE_DEFINITIONS.find((template) => template.key === selectedTemplateKey)?.label ?? selectedTemplateKey}</span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${canSend ? "bg-emerald-50 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>{canSend ? "Pregătit pentru trimitere" : "Inactiv până la salvarea pacientului"}</span>
+        </div>
+      ) : (
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)]">
         <div className="space-y-4 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
           <div>
@@ -129,6 +151,7 @@ export const SmsPatientCard = ({
           ) : null}
         </div>
       </div>
+      )}
     </section>
   );
 };

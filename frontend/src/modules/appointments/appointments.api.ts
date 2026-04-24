@@ -57,10 +57,14 @@ export const listAppointments = async (params: AppointmentsListParams): Promise<
   return response.data.data;
 };
 
-export const listAllAppointments = async (): Promise<AppointmentListItem[]> => {
-  return loadAllPages<AppointmentListItem>("/appointments", {
+export const listAllAppointments = async (
+  params: Omit<AppointmentsListParams, "page" | "page_size"> = {
     sort_by: "start_date_time",
     sort_direction: "asc",
+  },
+): Promise<AppointmentListItem[]> => {
+  return loadAllPages<AppointmentListItem>("/appointments", {
+    ...params,
   });
 };
 

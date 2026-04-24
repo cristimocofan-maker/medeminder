@@ -1,4 +1,5 @@
 import { resolvePagination } from "../../../shared/pagination/pagination.utils";
+import type { ChannelType } from "../../../shared/enums/channel-type.enum";
 import type { DatabaseClient } from "../../../shared/types/database.types";
 import type { MessageTemplatesCreateRequestDto } from "../dto/message-templates-create.request.dto";
 import type { MessageTemplatesListRequestDto } from "../dto/message-templates-list.request.dto";
@@ -8,6 +9,7 @@ import {
   messageTemplatesCountByFiltersQuery,
   messageTemplatesCreateInsertQuery,
   messageTemplatesGetByIdQuery,
+  messageTemplatesGetLatestByChannelTypeQuery,
   messageTemplatesListByFiltersQuery,
   messageTemplatesUpdateQuery,
 } from "./message-templates.queries";
@@ -60,6 +62,30 @@ export class MessageTemplatesRepository {
       templateId,
       clinicId,
     ]);
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+
+    return {
+      template_id: Number(row.template_id),
+      clinic_id: Number(row.clinic_id),
+      template_name: row.template_name,
+      channel_type: row.channel_type,
+      message_subject: row.message_subject,
+      message_body: row.message_body,
+      created_at: String(row.created_at),
+      updated_at: String(row.updated_at),
+    };
+  }
+
+  async getLatestByChannelType(clinicId: number, channelType: ChannelType): Promise<MessageTemplateRepositoryRecord | null> {
+    const result = await this.databaseClient.query<MessageTemplateRepositoryRecord>(
+      messageTemplatesGetLatestByChannelTypeQuery,
+      [clinicId, channelType],
+    );
 
     if (result.rowCount === 0) {
       return null;

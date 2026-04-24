@@ -56,6 +56,25 @@ export const messagesGetByIdQuery = `
   LIMIT 1;
 `;
 
+export const messagesGetLatestByAppointmentIdAndChannelTypeQuery = `
+  SELECT
+    m.message_id,
+    m.clinic_id,
+    m.appointment_id,
+    m.channel_type,
+    m.message_subject,
+    m.message_body,
+    m.message_status,
+    m.created_at,
+    m.updated_at
+  FROM messages m
+  WHERE m.clinic_id = $1
+    AND m.appointment_id = $2
+    AND m.channel_type = $3
+  ORDER BY m.created_at DESC, m.message_id DESC
+  LIMIT 1;
+`;
+
 export const messagesCreateInsertQuery = `
   INSERT INTO messages (
     clinic_id,
@@ -79,6 +98,16 @@ export const messagesRetryQuery = `
   UPDATE messages
   SET
     message_status = 'În coadă',
+    updated_at = CURRENT_TIMESTAMP
+  WHERE message_id = $1
+    AND clinic_id = $2
+  RETURNING message_id;
+`;
+
+export const messagesUpdateStatusQuery = `
+  UPDATE messages
+  SET
+    message_status = $3,
     updated_at = CURRENT_TIMESTAMP
   WHERE message_id = $1
     AND clinic_id = $2

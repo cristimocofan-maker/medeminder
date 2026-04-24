@@ -6,13 +6,21 @@ import type { AppointmentOverlapCheckDto } from "../dto/appointments-overlap-che
 import type { AppointmentsCreateRequestDto } from "../dto/appointments-create.request.dto";
 import type { AppointmentsListRequestDto } from "../dto/appointments-list.request.dto";
 import type { AppointmentsUpdateRequestDto } from "../dto/appointments-update.request.dto";
-import type { AppointmentRepositoryRecord, AppointmentsListRepositoryRow } from "../types/appointments.types";
+import type {
+  AppointmentPatientActionRepositoryRecord,
+  AppointmentRepositoryRecord,
+  AppointmentsListRepositoryRow,
+} from "../types/appointments.types";
 import {
   appointmentsConfirmQuery,
   appointmentsCountByFiltersQuery,
   appointmentsCreateInsertQuery,
+  appointmentsGetByPatientActionTokenQuery,
   appointmentsGetByIdQuery,
   appointmentsListByFiltersQuery,
+  appointmentsMarkPatientCancelledQuery,
+  appointmentsMarkPatientConfirmedQuery,
+  appointmentsMarkPatientRescheduleRequestedQuery,
   appointmentsOverlappingCountQuery,
   appointmentsUpdateQuery,
 } from "./appointments.queries";
@@ -23,6 +31,11 @@ interface AppointmentsCountRow {
 
 interface AppointmentWriteRow {
   appointment_id: number;
+}
+
+interface AppointmentPatientActionRow extends AppointmentRepositoryRecord {
+  patient_email: string | null;
+  latest_email_message_id: number | null;
 }
 
 export class AppointmentsRepository {
@@ -56,6 +69,7 @@ export class AppointmentsRepository {
       start_date_time: String(row.start_date_time),
       end_date_time: String(row.end_date_time),
       appointment_notes: row.appointment_notes === null ? null : String(row.appointment_notes),
+      patient_confirmation_status: row.patient_confirmation_status,
       created_at: String(row.created_at),
       updated_at: String(row.updated_at),
     }));
@@ -85,24 +99,15 @@ export class AppointmentsRepository {
 
     const row = result.rows[0];
 
-    return {
-      appointment_id: Number(row.appointment_id),
-      clinic_id: Number(row.clinic_id),
-      doctor_id: Number(row.doctor_id),
-      doctor_display_name: row.doctor_display_name,
-      patient_id: Number(row.patient_id),
-      patient_display_name: row.patient_display_name,
-      appointment_status: row.appointment_status,
-      confirmation_status: row.confirmation_status,
-      start_date_time: String(row.start_date_time),
-      end_date_time: String(row.end_date_time),
-      appointment_notes: row.appointment_notes === null ? null : String(row.appointment_notes),
-      created_at: String(row.created_at),
-      updated_at: String(row.updated_at),
-    };
+    return this.mapAppointmentRecord(row);
   }
 
-  async createAppointment(clinicId: number, requestDto: AppointmentsCreateRequestDto): Promise<AppointmentRepositoryRecord> {
+  async createAppointment(
+    clinicId: number,
+    requestDto: AppointmentsCreateRequestDto,
+    patientActionToken: string,
+    patientActionTokenExpiresAt: string,
+  ): Promise<AppointmentRepositoryRecord> {
     const result = await this.databaseClient.query<AppointmentWriteRow>(appointmentsCreateInsertQuery, [
       clinicId,
       requestDto.doctor_id,
@@ -112,6 +117,9 @@ export class AppointmentsRepository {
       requestDto.appointment_notes ?? null,
       "Programată",
       "Fără răspuns",
+      patientActionToken,
+      patientActionTokenExpiresAt,
+      "pending",
     ]);
 
     return (await this.getByAppointmentIdAndClinicId(result.rows[0].appointment_id, clinicId)) as AppointmentRepositoryRecord;
@@ -161,5 +169,74 @@ export class AppointmentsRepository {
     ]);
 
     return Number(result.rows[0]?.total_count ?? 0) > 0;
+  }
+
+  async getByPatientActionToken(token: string): Promise<AppointmentPatientActionRepositoryRecord | null> {
+    const result = await this.databaseClient.query<AppointmentPatientActionRow>(appointmentsGetByPatientActionTokenQuery, [token]);
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+
+    return {
+      ...this.mapAppointmentRecord(row),
+      patient_email: row.patient_email === null ? null : String(row.patient_email),
+      latest_email_message_id: row.latest_email_message_id === null ? null : Number(row.latest_email_message_id),
+    };
+  }
+
+  async markPatientConfirmed(appointmentId: number, clinicId: number): Promise<AppointmentRepositoryRecord> {
+    const result = await this.databaseClient.query<AppointmentWriteRow>(appointmentsMarkPatientConfirmedQuery, [
+      appointmentId,
+      clinicId,
+    ]);
+
+    return (await this.getByAppointmentIdAndClinicId(result.rows[0].appointment_id, clinicId)) as AppointmentRepositoryRecord;
+  }
+
+  async markPatientCancelled(appointmentId: number, clinicId: number): Promise<AppointmentRepositoryRecord> {
+    const result = await this.databaseClient.query<AppointmentWriteRow>(appointmentsMarkPatientCancelledQuery, [
+      appointmentId,
+      clinicId,
+    ]);
+
+    return (await this.getByAppointmentIdAndClinicId(result.rows[0].appointment_id, clinicId)) as AppointmentRepositoryRecord;
+  }
+
+  async markPatientRescheduleRequested(appointmentId: number, clinicId: number): Promise<AppointmentRepositoryRecord> {
+    const result = await this.databaseClient.query<AppointmentWriteRow>(appointmentsMarkPatientRescheduleRequestedQuery, [
+      appointmentId,
+      clinicId,
+    ]);
+
+    return (await this.getByAppointmentIdAndClinicId(result.rows[0].appointment_id, clinicId)) as AppointmentRepositoryRecord;
+  }
+
+  private mapAppointmentRecord(row: AppointmentRepositoryRecord): AppointmentRepositoryRecord {
+    return {
+      appointment_id: Number(row.appointment_id),
+      clinic_id: Number(row.clinic_id),
+      doctor_id: Number(row.doctor_id),
+      doctor_display_name: row.doctor_display_name,
+      patient_id: Number(row.patient_id),
+      patient_display_name: row.patient_display_name,
+      appointment_status: row.appointment_status,
+      confirmation_status: row.confirmation_status,
+      start_date_time: String(row.start_date_time),
+      end_date_time: String(row.end_date_time),
+      appointment_notes: row.appointment_notes === null ? null : String(row.appointment_notes),
+      patient_action_token: row.patient_action_token === null ? null : String(row.patient_action_token),
+      patient_action_token_expires_at:
+        row.patient_action_token_expires_at === null ? null : String(row.patient_action_token_expires_at),
+      patient_confirmation_status: row.patient_confirmation_status,
+      patient_confirmed_at: row.patient_confirmed_at === null ? null : String(row.patient_confirmed_at),
+      patient_cancelled_at: row.patient_cancelled_at === null ? null : String(row.patient_cancelled_at),
+      patient_reschedule_requested_at:
+        row.patient_reschedule_requested_at === null ? null : String(row.patient_reschedule_requested_at),
+      created_at: String(row.created_at),
+      updated_at: String(row.updated_at),
+    };
   }
 }

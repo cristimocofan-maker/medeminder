@@ -42,9 +42,14 @@ export const ensureTestSchema = async (): Promise<void> => {
         user_role_label VARCHAR(100) NOT NULL,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (clinic_id, email)
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+    `,
+  );
+
+  await queryOne(
+    `
+      CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (email);
     `,
   );
 
@@ -67,6 +72,23 @@ export const ensureTestSchema = async (): Promise<void> => {
         clinic_id INT NOT NULL REFERENCES clinics(clinic_id) ON DELETE CASCADE,
         display_name VARCHAR(255) NOT NULL,
         specialization_id INT NOT NULL REFERENCES specializations(specialization_id) ON DELETE RESTRICT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+  );
+
+  await queryOne(
+    `
+      CREATE TABLE IF NOT EXISTS specialization_services (
+        service_id SERIAL PRIMARY KEY,
+        clinic_id INT NOT NULL REFERENCES clinics(clinic_id) ON DELETE CASCADE,
+        specialization_id INT NOT NULL REFERENCES specializations(specialization_id) ON DELETE CASCADE,
+        service_name VARCHAR(255) NOT NULL,
+        price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        duration_minutes INT,
+        description TEXT,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -116,9 +138,35 @@ export const ensureTestSchema = async (): Promise<void> => {
         appointment_notes TEXT,
         appointment_status VARCHAR(100) NOT NULL,
         confirmation_status VARCHAR(100) NOT NULL,
+        patient_action_token VARCHAR(64),
+        patient_action_token_expires_at TIMESTAMPTZ,
+        patient_confirmation_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        patient_confirmed_at TIMESTAMPTZ,
+        patient_cancelled_at TIMESTAMPTZ,
+        patient_reschedule_requested_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+    `,
+  );
+
+  await queryOne(
+    `
+      ALTER TABLE appointments
+      ADD COLUMN IF NOT EXISTS patient_action_token VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS patient_action_token_expires_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS patient_confirmation_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS patient_confirmed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS patient_cancelled_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS patient_reschedule_requested_at TIMESTAMPTZ;
+    `,
+  );
+
+  await queryOne(
+    `
+      CREATE UNIQUE INDEX IF NOT EXISTS appointments_patient_action_token_uq
+      ON appointments (patient_action_token)
+      WHERE patient_action_token IS NOT NULL;
     `,
   );
 
@@ -194,6 +242,14 @@ export const ensureTestSchema = async (): Promise<void> => {
         default_channel_type VARCHAR(50) NOT NULL,
         appointment_reminder_hours_before INT NOT NULL,
         follow_up_delay_days INT NOT NULL,
+        sms_provider_name VARCHAR(255),
+        sms_sender_name VARCHAR(255),
+        sms_username VARCHAR(255),
+        sms_password TEXT,
+        sms_token TEXT,
+        sms_is_primary_gateway BOOLEAN DEFAULT TRUE,
+        sms_patient_action_base_path VARCHAR(255),
+        sms_last_checked_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );

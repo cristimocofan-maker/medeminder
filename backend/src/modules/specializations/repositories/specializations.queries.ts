@@ -71,3 +71,104 @@ export const specializationsUpdateQuery = `
     created_at,
     updated_at;
 `;
+
+export const specializationServicesListQuery = `
+  SELECT
+    service_id,
+    clinic_id,
+    specialization_id,
+    service_name,
+    price,
+    duration_minutes,
+    description,
+    is_active,
+    created_at,
+    updated_at
+  FROM specialization_services
+  WHERE clinic_id = $1
+    AND specialization_id = $2
+  ORDER BY is_active DESC, service_name ASC, service_id ASC;
+`;
+
+export const specializationServiceGetByIdQuery = `
+  SELECT
+    service_id,
+    clinic_id,
+    specialization_id,
+    service_name,
+    price,
+    duration_minutes,
+    description,
+    is_active,
+    created_at,
+    updated_at
+  FROM specialization_services
+  WHERE clinic_id = $1
+    AND specialization_id = $2
+    AND service_id = $3
+  LIMIT 1;
+`;
+
+export const specializationServiceCreateQuery = `
+  INSERT INTO specialization_services (
+    clinic_id,
+    specialization_id,
+    service_name,
+    price,
+    duration_minutes,
+    description,
+    is_active
+  ) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7
+  )
+  RETURNING
+    service_id,
+    clinic_id,
+    specialization_id,
+    service_name,
+    price,
+    duration_minutes,
+    description,
+    is_active,
+    created_at,
+    updated_at;
+`;
+
+export const specializationServiceUpdateQuery = `
+  UPDATE specialization_services
+  SET
+    service_name = $4,
+    price = $5,
+    duration_minutes = $6,
+    description = $7,
+    is_active = $8,
+    updated_at = CURRENT_TIMESTAMP
+  WHERE clinic_id = $1
+    AND specialization_id = $2
+    AND service_id = $3
+  RETURNING
+    service_id,
+    clinic_id,
+    specialization_id,
+    service_name,
+    price,
+    duration_minutes,
+    description,
+    is_active,
+    created_at,
+    updated_at;
+`;
+
+export const specializationServiceDeleteQuery = `
+  DELETE FROM specialization_services
+  WHERE clinic_id = $1
+    AND specialization_id = $2
+    AND service_id = $3
+  RETURNING service_id;
+`;

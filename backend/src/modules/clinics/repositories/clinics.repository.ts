@@ -1,10 +1,23 @@
 import type { DatabaseClient } from "../../../shared/types/database.types";
 import type { ClinicsUpdateCurrentRequestDto } from "../dto/clinics-update-current.request.dto";
 import type { ClinicRepositoryRecord } from "../types/clinics.types";
-import { clinicsGetByClinicIdQuery, clinicsUpdateDisplayNameByClinicIdQuery } from "./clinics.queries";
+import {
+  clinicsGetByClinicIdQuery,
+  clinicsListActiveForLoginQuery,
+  clinicsUpdateDisplayNameByClinicIdQuery,
+} from "./clinics.queries";
 
 export class ClinicsRepository {
   constructor(private readonly databaseClient: DatabaseClient) {}
+
+  async listActiveForLogin(): Promise<ClinicRepositoryRecord[]> {
+    const result = await this.databaseClient.query<ClinicRepositoryRecord>(clinicsListActiveForLoginQuery);
+
+    return result.rows.map((row) => ({
+      clinic_id: Number(row.clinic_id),
+      display_name: row.display_name,
+    }));
+  }
 
   async getByClinicId(clinicId: number): Promise<ClinicRepositoryRecord | null> {
     const result = await this.databaseClient.query<ClinicRepositoryRecord>(clinicsGetByClinicIdQuery, [clinicId]);

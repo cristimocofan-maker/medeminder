@@ -43,6 +43,8 @@ export interface AppointmentPatientOption {
 export interface AppointmentsListParams {
   page: number;
   page_size: number;
+  start_date_time_from?: string;
+  start_date_time_to?: string;
   sort_by?: "appointment_id" | "start_date_time" | "doctor_id" | "patient_id" | "appointment_status" | "created_at";
   sort_direction?: "asc" | "desc";
 }

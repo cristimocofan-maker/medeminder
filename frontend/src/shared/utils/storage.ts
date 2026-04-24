@@ -32,7 +32,7 @@ const isSessionExpired = (session: AuthSession): boolean => {
 
 export const authSessionStorage = {
   read(): AuthSession | null {
-    const rawValue = window.localStorage.getItem(sessionStorageKey);
+    const rawValue = window.sessionStorage.getItem(sessionStorageKey);
 
     if (rawValue === null) {
       return null;
@@ -42,20 +42,20 @@ export const authSessionStorage = {
       const parsedSession = JSON.parse(rawValue) as AuthSession;
 
       if (isSessionExpired(parsedSession)) {
-        window.localStorage.removeItem(sessionStorageKey);
+        window.sessionStorage.removeItem(sessionStorageKey);
         return null;
       }
 
       return parsedSession;
     } catch {
-      window.localStorage.removeItem(sessionStorageKey);
+      window.sessionStorage.removeItem(sessionStorageKey);
       return null;
     }
   },
   write(session: AuthSession): void {
-    window.localStorage.setItem(sessionStorageKey, JSON.stringify(session));
+    window.sessionStorage.setItem(sessionStorageKey, JSON.stringify(session));
   },
   clear(): void {
-    window.localStorage.removeItem(sessionStorageKey);
+    window.sessionStorage.removeItem(sessionStorageKey);
   },
 };

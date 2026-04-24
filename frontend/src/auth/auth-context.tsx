@@ -5,6 +5,17 @@ import type { ApiSuccessResponse } from "../shared/types/api";
 import type { AuthLoginRequest, AuthLogoutResponse, AuthSession } from "../shared/types/auth";
 import { authSessionStorage } from "../shared/utils/storage";
 
+const accessTokenStorageKey = "kidsrap.access_token";
+
+const syncAccessTokenStorage = (session: AuthSession | null): void => {
+  if (session === null) {
+    window.localStorage.removeItem(accessTokenStorageKey);
+    return;
+  }
+
+  window.localStorage.setItem(accessTokenStorageKey, session.access_token);
+};
+
 interface AuthContextValue {
   session: AuthSession | null;
   isAuthenticated: boolean;
@@ -20,15 +31,20 @@ export const AuthProvider = ({ children }: PropsWithChildren): JSX.Element => {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    setSession(authSessionStorage.read());
+    const storedSession = authSessionStorage.read();
+
+    setSession(storedSession);
+    syncAccessTokenStorage(storedSession);
     setIsHydrated(true);
   }, []);
 
   const login = async (payload: AuthLoginRequest): Promise<void> => {
     const response = await apiClient.post<ApiSuccessResponse<AuthSession>>("/auth/login", payload);
+    const nextSession = response.data.data;
 
-    authSessionStorage.write(response.data.data);
-    setSession(response.data.data);
+    authSessionStorage.write(nextSession);
+    syncAccessTokenStorage(nextSession);
+    setSession(nextSession);
   };
 
   const logout = async (): Promise<void> => {
@@ -36,6 +52,7 @@ export const AuthProvider = ({ children }: PropsWithChildren): JSX.Element => {
       await apiClient.post<ApiSuccessResponse<AuthLogoutResponse>>("/auth/logout");
     } finally {
       authSessionStorage.clear();
+      syncAccessTokenStorage(null);
       setSession(null);
     }
   };

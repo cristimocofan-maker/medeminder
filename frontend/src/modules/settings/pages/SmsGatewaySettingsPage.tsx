@@ -7,6 +7,9 @@ import {
   buildSmsContextForAppointment,
   useSmsGatewayLocalState,
 } from "../sms-gateway.local";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getClinicSettings, updateClinicSettings } from "../../clinic-settings/clinic-settings.api";
+import type { ClinicSettingsDetails } from "../../clinic-settings/clinic-settings.types";
 
 export const SmsGatewaySettingsPage = (): JSX.Element => {
   const { showToast } = useToast();
@@ -22,6 +25,9 @@ export const SmsGatewaySettingsPage = (): JSX.Element => {
     saveAutomationRule,
     sendTestSms,
   } = useSmsGatewayLocalState();
+
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery<ClinicSettingsDetails>({ queryKey: ["clinic-settings"], queryFn: async () => getClinicSettings() });
 
   const previewContext = buildSmsContextForAppointment({
     appointmentId: null,
@@ -48,13 +54,42 @@ export const SmsGatewaySettingsPage = (): JSX.Element => {
 
           return checkedAt;
         }}
-        onSave={(nextConnection) => {
+        onSave={async (nextConnection) => {
           saveConnection(nextConnection);
-          showToast({
-            variant: "success",
-            title: "Configurația SMS a fost salvată",
-            description: "Datele au fost păstrate local pentru conectarea ulterioară la provider.",
-          });
+
+          // persist to backend clinic settings
+          const currentSettings = settingsQuery.data;
+
+          if (!currentSettings) {
+            showToast({ variant: "error", title: "Nu am putut salva", description: "Setările clinicii nu sunt încărcate." });
+            return;
+          }
+
+          try {
+            await updateClinicSettings({
+              timezone: currentSettings.timezone,
+              default_channel_type: currentSettings.default_channel_type,
+              appointment_reminder_hours_before: currentSettings.appointment_reminder_hours_before,
+              follow_up_delay_days: currentSettings.follow_up_delay_days,
+              sms_provider_name: nextConnection.provider_name ?? null,
+              sms_sender_name: nextConnection.sender_name ?? null,
+              sms_username: nextConnection.username ?? null,
+              sms_password: nextConnection.password ?? null,
+              sms_token: nextConnection.token ?? null,
+              sms_is_primary_gateway: nextConnection.is_primary_gateway,
+              sms_patient_action_base_path: nextConnection.patient_action_base_path ?? null,
+            });
+
+            await queryClient.invalidateQueries({ queryKey: ["clinic-settings"] });
+
+            showToast({
+              variant: "success",
+              title: "Configurația SMS a fost salvată",
+              description: "Datele au fost persistate în baza de date.",
+            });
+          } catch (err) {
+            showToast({ variant: "error", title: "Eroare salvare", description: "Nu am putut salva setările pe backend." });
+          }
         }}
       />
 

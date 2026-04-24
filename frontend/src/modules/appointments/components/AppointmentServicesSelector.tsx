@@ -1,9 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { DoctorListItem } from "../../doctors/doctors.types";
 import { useDoctorServiceOverridesRegistry } from "../../doctors/components/doctor-services.store";
 import { resolveDoctorServices } from "../../doctors/components/resolve-doctor-services";
-import { useSpecializationServicesRegistry } from "../../specializations/components/specialization-services.store";
+import { listSpecializationServices } from "../../specializations/specializations.api";
 import { getSpecializationTheme } from "../../specializations/components/specialization-theme";
 
 interface AppointmentServicesSelectorProps {
@@ -25,19 +26,23 @@ export const AppointmentServicesSelector = ({
   subtitle = "Serviciile afișate sunt cele efective pentru medicul selectat, după aplicarea override-urilor locale.",
   title = "Servicii medicale",
 }: AppointmentServicesSelectorProps): JSX.Element => {
-  const { getServices } = useSpecializationServicesRegistry();
   const { getOverrides } = useDoctorServiceOverridesRegistry();
   const [searchValue, setSearchValue] = useState("");
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<Array<number | string>>([]);
   const theme = getSpecializationTheme(doctor?.specialization_display_name ?? null);
+  const specializationServicesQuery = useQuery({
+    queryKey: ["specialization-services", doctor?.specialization_id],
+    queryFn: async () => listSpecializationServices(doctor!.specialization_id),
+    enabled: doctor !== null,
+  });
 
   const resolvedServices = useMemo(() => {
     if (doctor === null) {
       return [];
     }
 
-    return resolveDoctorServices(doctor, getServices(doctor.specialization_id), getOverrides(doctor.doctor_id));
-  }, [doctor, getOverrides, getServices]);
+    return resolveDoctorServices(doctor, specializationServicesQuery.data ?? [], getOverrides(doctor.doctor_id));
+  }, [doctor, getOverrides, specializationServicesQuery.data]);
 
   const selectedServices = useMemo(
     () => resolvedServices.filter((service) => selectedServiceIds.includes(service.id)),
@@ -57,7 +62,7 @@ export const AppointmentServicesSelector = ({
   const totalDurationMinutes = selectedServices.reduce((total, service) => total + (service.duration_minutes ?? 0), 0);
   const exceedsSlotDuration = slotDurationMinutes !== null && totalDurationMinutes > slotDurationMinutes;
 
-  const toggleService = (serviceId: string): void => {
+  const toggleService = (serviceId: number | string): void => {
     setSelectedServiceIds((currentValue) => {
       if (currentValue.includes(serviceId)) {
         return currentValue.filter((currentServiceId) => currentServiceId !== serviceId);

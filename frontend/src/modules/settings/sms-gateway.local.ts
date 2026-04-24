@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type {
   SmsAutomationKey,
   SmsAutomationRule,
@@ -11,9 +11,6 @@ import type {
   SmsTemplateKey,
   SmsTemplateVariableDefinition,
 } from "./sms-gateway.types";
-
-const STORAGE_KEY = "medreminder:sms-gateway-state";
-const CHANGE_EVENT_NAME = "medreminder:sms-gateway-updated";
 
 export const SMS_TEMPLATE_DEFINITIONS: SmsTemplateDefinition[] = [
   {
@@ -123,6 +120,9 @@ const DEFAULT_STATE: SmsGatewayState = {
   connection: {
     provider_name: "",
     sender_name: "",
+    token: "",
+    username: "",
+    password: "",
     is_primary_gateway: true,
     patient_action_base_path: "/pacient/sms",
     last_checked_at: null,
@@ -216,6 +216,9 @@ const normalizeState = (value: Partial<SmsGatewayState> | null | undefined): Sms
     connection: {
       provider_name: typeof value?.connection?.provider_name === "string" ? value.connection.provider_name : DEFAULT_STATE.connection.provider_name,
       sender_name: typeof value?.connection?.sender_name === "string" ? value.connection.sender_name : DEFAULT_STATE.connection.sender_name,
+      token: typeof value?.connection?.token === "string" ? value.connection.token : DEFAULT_STATE.connection.token,
+      username: typeof value?.connection?.username === "string" ? value.connection.username : DEFAULT_STATE.connection.username,
+      password: typeof value?.connection?.password === "string" ? value.connection.password : DEFAULT_STATE.connection.password,
       is_primary_gateway: typeof value?.connection?.is_primary_gateway === "boolean" ? value.connection.is_primary_gateway : DEFAULT_STATE.connection.is_primary_gateway,
       patient_action_base_path: typeof value?.connection?.patient_action_base_path === "string" && value.connection.patient_action_base_path.trim() !== ""
         ? value.connection.patient_action_base_path
@@ -238,33 +241,6 @@ const normalizeState = (value: Partial<SmsGatewayState> | null | undefined): Sms
       }
       : null,
   };
-};
-
-const readState = (): SmsGatewayState => {
-  if (typeof window === "undefined") {
-    return DEFAULT_STATE;
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(STORAGE_KEY);
-
-    if (rawValue === null) {
-      return DEFAULT_STATE;
-    }
-
-    return normalizeState(JSON.parse(rawValue) as Partial<SmsGatewayState>);
-  } catch {
-    return DEFAULT_STATE;
-  }
-};
-
-const writeState = (value: SmsGatewayState): void => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-  window.dispatchEvent(new Event(CHANGE_EVENT_NAME));
 };
 
 const buildProviderResponse = (status: SmsDeliveryStatus, providerName: string): string => {
@@ -347,79 +323,28 @@ export const buildSmsContextForAppointment = (input: {
 };
 
 export const useSmsGatewayLocalState = () => {
-  const [state, setState] = useState<SmsGatewayState>(() => readState());
-
-  useEffect(() => {
-    const refresh = (): void => {
-      setState(readState());
-    };
-
-    window.addEventListener(CHANGE_EVENT_NAME, refresh);
-    window.addEventListener("storage", refresh);
-
-    return () => {
-      window.removeEventListener(CHANGE_EVENT_NAME, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-
-  const persist = (updater: (currentState: SmsGatewayState) => SmsGatewayState): SmsGatewayState => {
-    const nextState = updater(readState());
-    writeState(nextState);
-    setState(nextState);
-
-    return nextState;
-  };
+  const state = DEFAULT_STATE;
 
   const saveConnection = (connection: SmsGatewayState["connection"]): void => {
-    persist((currentState) => ({
-      ...currentState,
-      connection,
-    }));
+    void connection;
   };
 
   const markConnectionChecked = (): string => {
-    const checkedAt = new Date().toISOString();
-
-    persist((currentState) => ({
-      ...currentState,
-      connection: {
-        ...currentState.connection,
-        last_checked_at: checkedAt,
-      },
-    }));
-
-    return checkedAt;
+    return new Date().toISOString();
   };
 
   const saveTemplate = (templateKey: SmsTemplateKey, content: string): void => {
-    persist((currentState) => ({
-      ...currentState,
-      templates: {
-        ...currentState.templates,
-        [templateKey]: content,
-      },
-    }));
+    void templateKey;
+    void content;
   };
 
   const resetTemplate = (templateKey: SmsTemplateKey): void => {
-    persist((currentState) => ({
-      ...currentState,
-      templates: {
-        ...currentState.templates,
-        [templateKey]: DEFAULT_SMS_TEMPLATES[templateKey],
-      },
-    }));
+    void templateKey;
   };
 
   const saveAutomationRule = (automationKey: SmsAutomationKey, rule: SmsAutomationRule): void => {
-    persist((currentState) => ({
-      ...currentState,
-      automations: {
-        ...currentState.automations,
-        [automationKey]: rule,
-      },
-    }));
+    void automationKey;
+    void rule;
   };
 
   const sendTestSms = (payload: {
@@ -437,11 +362,6 @@ export const useSmsGatewayLocalState = () => {
       timestamp: new Date().toISOString(),
       provider_response: buildProviderResponse(status, providerName),
     };
-
-    persist((currentState) => ({
-      ...currentState,
-      last_test_result: result,
-    }));
 
     return result;
   };
@@ -465,41 +385,12 @@ export const useSmsGatewayLocalState = () => {
       provider_response: buildProviderResponse(status, providerName),
     };
 
-    persist((currentState) => ({
-      ...currentState,
-      history: [item, ...currentState.history],
-    }));
-
     return item;
   };
 
   const retryHistoryItem = (historyId: string): SmsHistoryItem | null => {
-    let retriedItem: SmsHistoryItem | null = null;
-
-    persist((currentState) => {
-      const nextHistory = currentState.history.map((item) => {
-        if (item.id !== historyId) {
-          return item;
-        }
-
-        const status = resolveDeliveryStatus(item.phone_number, item.message, currentState.connection.provider_name);
-        retriedItem = {
-          ...item,
-          sent_at: new Date().toISOString(),
-          status,
-          provider_response: buildProviderResponse(status, currentState.connection.provider_name),
-        };
-
-        return retriedItem;
-      });
-
-      return {
-        ...currentState,
-        history: nextHistory,
-      };
-    });
-
-    return retriedItem;
+    void historyId;
+    return null;
   };
 
   const patientHistoryMap = useMemo(() => {

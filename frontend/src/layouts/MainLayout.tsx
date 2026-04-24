@@ -1,4 +1,4 @@
-import { Bell, CalendarDays, Files, HeartPulse, Layers3, LogOut, MessageSquareReply, MessageSquareText, RotateCcw, Settings2, Stethoscope, Users } from "lucide-react";
+import { Bell, CalendarDays, Files, HeartPulse, Layers3, LogOut, MessageSquareReply, MessageSquareText, Plus, RotateCcw, Settings2, Stethoscope, Users } from "lucide-react";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -61,17 +61,17 @@ const pageMeta: Record<string, { badge: string; title: string; description: stri
   "/": {
     badge: "Dashboard",
     title: "Ai la vedere doar fluxurile utile acum",
-    description: "Panoul principal păstrează doar traseele stabile și evită meniurile nefuncționale sau incomplete.",
+    description: "Fluxuri utile",
   },
   "/pacienti": {
     badge: "Pacienți",
     title: "Baza de pacienți este pregătită pentru conectarea la API-ul real",
-    description: "Ecranul rămâne minimal până când lista și formularele sunt conectate strict la endpointurile reale din backend.",
+    description: "Baza clinicii",
   },
   "/programari": {
     badge: "Programări",
     title: "Programări",
-    description: "Vezi rapid agenda și acțiunile utile.",
+    description: "Agenda clinicii",
   },
 };
 
@@ -80,20 +80,20 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
     return {
       badge: "Pacienți",
       title: "Gestionezi complet pacienții clinicii",
-      description: "Lista, crearea și editarea folosesc exclusiv endpointurile reale din backend, fără lookup după nume, email sau telefon.",
+      description: "",
     };
   }
 
-  if (pathname === "/programari" || pathname === "/programari/nou" || pathname.startsWith("/programari/")) {
+  if (pathname === "/programari" || pathname.startsWith("/programari/")) {
     return {
       badge: "Programări",
       title:
         pathname === "/programari"
           ? "Programări"
-          : pathname === "/programari/nou" || pathname === "/programari/nou_1"
+          : pathname === "/programari/nou_1"
             ? "Programare nouă"
             : "Editează programarea",
-      description: "Acces rapid la agenda clinicii.",
+      description: "Agenda clinicii",
     };
   }
 
@@ -102,7 +102,7 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
       return {
         badge: "Program",
         title: "Configurezi disponibilitatea reală a doctorului",
-        description: "Programul pe zile și durata implicită a consultației sunt citite și salvate exclusiv prin endpointurile reale ale backend-ului.",
+        description: "Program medic",
       };
     }
 
@@ -121,7 +121,7 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
     return {
       badge: "Specializări",
       title: "Gestionezi complet specializările clinicii",
-      description: "Lista, crearea și editarea folosesc exclusiv endpointurile reale din backend, iar clinic_id rămâne gestionat exclusiv de backend.",
+      description: "",
     };
   }
 
@@ -129,7 +129,7 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
     return {
       badge: "Mesaje",
       title: "Gestionezi mesajele clinicii",
-      description: "Lista și detaliul folosesc exclusiv endpointurile reale din backend, iar `message_id` și `appointment_id` rămân identificatori numerici interni.",
+      description: "Mesaje clinică",
     };
   }
 
@@ -137,7 +137,7 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
     return {
       badge: "Template-uri",
       title: "Gestionezi template-urile mesajelor",
-      description: "Lista, crearea și editarea folosesc exclusiv endpointurile reale din backend, iar clinic_id nu apare în frontend.",
+      description: "Șabloane mesaje",
     };
   }
 
@@ -145,7 +145,7 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
     return {
       badge: "Reveniri",
       title: "Gestionezi follow-ups din clinică",
-      description: "Lista, detaliul și actualizarea de status folosesc exclusiv endpointurile reale din backend, iar `follow_up_id` și `appointment_id` rămân numerice.",
+      description: "Urmărire pacienți",
     };
   }
 
@@ -153,7 +153,7 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
     return {
       badge: "Răspunsuri",
       title: "Gestionezi responses din clinică",
-      description: "Lista și detaliul folosesc exclusiv endpointurile reale din backend, iar `response_id` și `message_id` rămân identificatori numerici interni.",
+      description: "Răspunsuri primite",
     };
   }
 
@@ -161,7 +161,7 @@ const resolvePageMeta = (pathname: string): { badge: string; title: string; desc
     return {
       badge: "Setări",
       title: "Configurezi setările reale ale clinicii",
-      description: "Pagina folosește exclusiv endpointul real `/clinic-settings`, fără clinic_id în frontend și fără valori fictive.",
+      description: "Configurare clinică",
     };
   }
 
@@ -173,14 +173,16 @@ export const MainLayout = (): JSX.Element => {
   const location = useLocation();
   const { logout, session } = useAuth();
   const currentPage = resolvePageMeta(location.pathname);
-  const isAppointmentsRoute = location.pathname === "/programari" || location.pathname.startsWith("/programari/");
   const isDashboardRoute = location.pathname === "/";
-  const useExpandedShell = isAppointmentsRoute || isDashboardRoute;
+  const useExpandedShell = true;
   const isDoctorsRoute = location.pathname === "/doctori" || location.pathname === "/doctori/nou" || location.pathname.startsWith("/doctori/");
   const isDoctorsListRoute = location.pathname === "/doctori";
+  const isPatientsListRoute = location.pathname === "/pacienti";
+  const isSpecializationsListRoute = location.pathname === "/specializari";
   const hideLayoutHeader =
+    location.pathname === "/pacienti" ||
     location.pathname === "/programari" ||
-    location.pathname === "/programari/nou" ||
+    location.pathname === "/programari/nou_1" ||
     location.pathname.startsWith("/programari/");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -200,7 +202,7 @@ export const MainLayout = (): JSX.Element => {
         <aside className={`panel page-enter fixed inset-y-4 left-4 z-50 flex w-[min(19rem,calc(100vw-2rem))] flex-col justify-between overflow-y-auto p-5 transition-transform duration-200 lg:static lg:w-auto lg:translate-x-0 lg:p-6 ${isMobileSidebarOpen ? "translate-x-0" : "-translate-x-[120%] lg:translate-x-0"}`}>
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[24px] bg-primary text-white shadow-lg shadow-primary/20">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[24px] bg-primary text-white">
                 <HeartPulse className="h-6 w-6" />
               </div>
               <div>
@@ -227,18 +229,20 @@ export const MainLayout = (): JSX.Element => {
                     className={({ isActive }) =>
                       `block rounded-[22px] border px-4 py-3 transition ${
                         isActive
-                          ? "border-primary/20 bg-primary text-white shadow-sm"
+                          ? "border-primary/20 bg-primary text-white"
                           : "border-slate-200/80 bg-white/80 text-ink hover:border-primary/20 hover:bg-primary/5"
                       }`
                     }
                     to={item.to}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-2xl bg-white/80 p-2 text-current [&_svg]:text-current">
-                        <Icon className="h-5 w-5" />
+                    {({ isActive }) => (
+                      <div className="flex items-center gap-3">
+                        <div className={`rounded-2xl p-2 [&_svg]:text-current ${isActive ? "bg-white/18 text-white" : "bg-white/80 text-current"}`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <span className={`text-sm font-semibold ${isActive ? "text-white" : "text-slate-700"}`}>{item.label}</span>
                       </div>
-                      <p className="text-sm font-semibold">{item.label}</p>
-                    </div>
+                    )}
                   </NavLink>
                 );
               })}
@@ -288,6 +292,16 @@ export const MainLayout = (): JSX.Element => {
                 <Link className="button-primary shrink-0 whitespace-nowrap gap-2" to="/doctori/nou">
                   <Stethoscope className="h-5 w-5" />
                   Adaugă medic
+                </Link>
+              ) : isPatientsListRoute ? (
+                <Link className="button-primary shrink-0 whitespace-nowrap gap-2 px-4 py-2.5 text-sm" to="/pacienti/nou">
+                  <Plus className="h-4 w-4" />
+                  Pacient nou
+                </Link>
+              ) : isSpecializationsListRoute ? (
+                <Link className="button-primary shrink-0 gap-2 self-start whitespace-nowrap px-5 py-3" to="/specializari/nou">
+                  <Plus className="h-5 w-5" />
+                  Specializare nouă
                 </Link>
               ) : isDoctorsRoute ? null : (
                 <div className="panel-subtle flex items-center gap-3 px-4 py-3">

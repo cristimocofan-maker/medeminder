@@ -63,10 +63,6 @@ export const router = createBrowserRouter([
             element: withSuspense(<AppointmentsPage />),
           },
           {
-            path: "programari/nou",
-            element: withSuspense(<AppointmentsFormPage />),
-          },
-          {
             path: "programari/nou_1",
             element: withSuspense(<AppointmentsWizardPage />),
           },

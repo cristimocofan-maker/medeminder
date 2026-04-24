@@ -52,6 +52,37 @@ export const usersGetByIdQuery = `
   LIMIT 1;
 `;
 
+export const usersGetByEmailQuery = `
+  SELECT
+    u.user_id,
+    u.clinic_id,
+    u.email,
+    u.password_hash,
+    u.user_role_label,
+    u.is_active,
+    u.created_at,
+    u.updated_at
+  FROM users u
+  WHERE u.email = $1
+  LIMIT 1;
+`;
+
+export const usersGetByEmailExcludingUserQuery = `
+  SELECT
+    u.user_id,
+    u.clinic_id,
+    u.email,
+    u.password_hash,
+    u.user_role_label,
+    u.is_active,
+    u.created_at,
+    u.updated_at
+  FROM users u
+  WHERE u.email = $1
+    AND u.user_id <> $2
+  LIMIT 1;
+`;
+
 export const usersCreateInsertQuery = `
   INSERT INTO users (
     clinic_id,

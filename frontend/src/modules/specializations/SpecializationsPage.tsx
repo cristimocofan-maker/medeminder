@@ -3,8 +3,6 @@ import { AlertCircle, ArrowLeft, ArrowRight, Plus, RefreshCw } from "lucide-reac
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { listSpecializations } from "./specializations.api";
-import { SpecializationServicesEditor } from "./components/SpecializationServicesEditor";
-import { useSpecializationServicesRegistry } from "./components/specialization-services.store";
 import { getSpecializationTheme } from "./components/specialization-theme";
 
 const pageSize = 10;
@@ -23,19 +21,11 @@ const parsePage = (value: string | null): number => {
   return parsedValue;
 };
 
-const formatDate = (value: string): string => {
-  return new Intl.DateTimeFormat("ro-RO", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-};
-
 export const SpecializationsPage = (): JSX.Element | null => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchValue, setSearchValue] = useState("");
-  const { deleteService, getServices, upsertService } = useSpecializationServicesRegistry();
   const page = parsePage(searchParams.get("page"));
   const successMessage = (location.state as { successMessage?: string } | null)?.successMessage;
 
@@ -159,17 +149,11 @@ export const SpecializationsPage = (): JSX.Element | null => {
         </div>
       ) : null}
 
-      <div className="panel flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between md:p-8">
+      <div className="panel p-6 md:p-8">
         <div>
           <span className="badge-soft">Specializări</span>
           <h2 className="mt-4">Lista completă de specializări ale clinicii</h2>
-          <p className="mt-3">Datele sunt citite exclusiv din `/specializations`, iar identificarea folosește doar `specialization_id` numeric.</p>
         </div>
-
-        <Link className="button-primary gap-2" to="/specializari/nou">
-          <Plus className="h-5 w-5" />
-          Specializare nouă
-        </Link>
       </div>
 
       <div className="panel overflow-hidden">
@@ -194,26 +178,18 @@ export const SpecializationsPage = (): JSX.Element | null => {
             <p className="mt-3 text-sm text-slate-500">Ajustează căutarea locală pentru a reveni la specializările deja încărcate.</p>
           </div>
         ) : (
-          <div className="grid gap-4 px-6 py-5 md:px-8">
+          <div className="grid gap-3 px-6 py-4 md:px-8">
             {filteredItems.map((specialization) => {
               const theme = getSpecializationTheme(specialization.specialization_display_name);
 
               return (
                 <article
-                  className={`rounded-[32px] border ${theme.borderClassName} ${theme.surfaceClassName} p-5 shadow-sm`}
+                  className={`rounded-[30px] border ${theme.borderClassName} ${theme.surfaceClassName} p-4 md:p-5 shadow-sm`}
                   key={specialization.specialization_id}
                 >
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                     <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${theme.badgeClassName}`}>
-                          Specializare
-                        </span>
-                        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${theme.subtleBadgeClassName}`}>
-                          Actualizat {formatDate(specialization.updated_at)}
-                        </span>
-                      </div>
-                      <h3 className="mt-4 text-2xl font-semibold text-ink">{specialization.specialization_display_name}</h3>
+                      <h3 className="text-[1.35rem] font-semibold leading-tight text-ink md:text-[1.5rem]">{specialization.specialization_display_name}</h3>
                     </div>
 
                     <Link className="button-secondary inline-flex min-h-10 px-4 py-2 text-sm" to={`/specializari/${specialization.specialization_id}`}>
@@ -221,15 +197,6 @@ export const SpecializationsPage = (): JSX.Element | null => {
                     </Link>
                   </div>
 
-                  <div className="mt-5">
-                    <SpecializationServicesEditor
-                      onDeleteService={(serviceId) => deleteService(specialization.specialization_id, serviceId)}
-                      onSaveService={upsertService}
-                      services={getServices(specialization.specialization_id)}
-                      specializationId={specialization.specialization_id}
-                      specializationName={specialization.specialization_display_name}
-                    />
-                  </div>
                 </article>
               );
             })}

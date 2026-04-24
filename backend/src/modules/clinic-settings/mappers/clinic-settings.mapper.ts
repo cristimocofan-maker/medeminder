@@ -10,6 +10,13 @@ export class ClinicSettingsMapper {
       default_channel_type: record.default_channel_type,
       appointment_reminder_hours_before: record.appointment_reminder_hours_before,
       follow_up_delay_days: record.follow_up_delay_days,
+      sms_provider_name: record.sms_provider_name,
+      sms_sender_name: record.sms_sender_name,
+      sms_username: record.sms_username,
+      sms_password: record.sms_password,
+      sms_token: record.sms_token,
+      sms_is_primary_gateway: record.sms_is_primary_gateway,
+      sms_patient_action_base_path: record.sms_patient_action_base_path,
       created_at: record.created_at,
       updated_at: record.updated_at,
     };
@@ -22,6 +29,13 @@ export class ClinicSettingsMapper {
       default_channel_type: record.default_channel_type,
       appointment_reminder_hours_before: record.appointment_reminder_hours_before,
       follow_up_delay_days: record.follow_up_delay_days,
+      sms_provider_name: record.sms_provider_name,
+      sms_sender_name: record.sms_sender_name,
+      sms_username: record.sms_username,
+      sms_password: record.sms_password,
+      sms_token: record.sms_token,
+      sms_is_primary_gateway: record.sms_is_primary_gateway,
+      sms_patient_action_base_path: record.sms_patient_action_base_path,
       updated_at: record.updated_at,
     };
   }

@@ -1,7 +1,6 @@
 import type bcrypt from "bcrypt";
 import type { AuthContext } from "../../../shared/auth/auth.types";
 import { AuthSessionService } from "../../../shared/auth/auth-session.service";
-import { FkNotFoundException } from "../../../shared/exceptions/fk-not-found.exception";
 import type { AuthLoginRequestDto } from "../dto/auth-login.request.dto";
 import type { AuthLoginResponseDto } from "../dto/auth-login.response.dto";
 import type { AuthLogoutResponseDto } from "../dto/auth-logout.response.dto";
@@ -16,17 +15,12 @@ export class AuthService {
     private readonly clinicsRepository: ClinicsRepository,
     private readonly authMapper: AuthMapper,
     private readonly authSessionService: AuthSessionService,
+    private readonly authSessionExpiresInSeconds: number,
     private readonly passwordComparator: Pick<typeof bcrypt, "compare">,
   ) {}
 
   async authLogin(requestDto: AuthLoginRequestDto): Promise<AuthLoginResponseDto> {
-    const clinic = await this.clinicsRepository.getByClinicId(requestDto.clinic_id);
-
-    if (clinic === null) {
-      throw new FkNotFoundException(undefined, "clinic_id");
-    }
-
-    const user = await this.authRepository.getByEmailAndClinicId(requestDto.email, requestDto.clinic_id);
+    const user = await this.authRepository.getByEmail(requestDto.email);
 
     if (user === null) {
       throw new InvalidCredentialsException();
@@ -52,7 +46,13 @@ export class AuthService {
 
     const accessToken = this.authSessionService.sign(authContext);
 
-    return this.authMapper.toAuthLoginResponseDto(accessToken, 3600, user, clinic);
+    const clinic = await this.clinicsRepository.getByClinicId(user.clinic_id);
+
+    if (clinic === null) {
+      throw new InvalidCredentialsException();
+    }
+
+    return this.authMapper.toAuthLoginResponseDto(accessToken, this.authSessionExpiresInSeconds, user, clinic);
   }
 
   async authLogout(_authContext: AuthContext): Promise<AuthLogoutResponseDto> {

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export interface DoctorServiceOverride {
   doctor_id: number;
-  service_id?: string;
+  service_id?: number;
   custom_name?: string;
   custom_price?: number;
   custom_duration_minutes?: number;
@@ -15,10 +15,23 @@ export interface DoctorServiceOverrideRecord extends DoctorServiceOverride {
 }
 
 type OverridesRegistry = Record<string, DoctorServiceOverrideRecord[]>;
-type RegistryUpdater = OverridesRegistry | ((currentRegistry: OverridesRegistry) => OverridesRegistry);
 
-const storageKey = "medreminder.doctor-service-overrides";
-const storageEventName = "medreminder-doctor-service-overrides-change";
+let overridesRegistry: OverridesRegistry = {};
+const registryListeners = new Set<() => void>();
+
+const emitRegistryChange = (): void => {
+  registryListeners.forEach((listener) => listener());
+};
+
+const subscribeToRegistry = (listener: () => void): (() => void) => {
+  registryListeners.add(listener);
+
+  return () => {
+    registryListeners.delete(listener);
+  };
+};
+
+const getRegistrySnapshot = (): OverridesRegistry => overridesRegistry;
 
 const sanitizeOverride = (value: unknown): DoctorServiceOverrideRecord | null => {
   if (typeof value !== "object" || value === null) {
@@ -40,7 +53,9 @@ const sanitizeOverride = (value: unknown): DoctorServiceOverrideRecord | null =>
   return {
     id: candidate.id,
     doctor_id: candidate.doctor_id,
-    service_id: typeof candidate.service_id === "string" && candidate.service_id.trim() !== "" ? candidate.service_id : undefined,
+    service_id: typeof candidate.service_id === "number" && Number.isInteger(candidate.service_id) && candidate.service_id > 0
+      ? candidate.service_id
+      : undefined,
     custom_name: typeof candidate.custom_name === "string" && candidate.custom_name.trim() !== "" ? candidate.custom_name.trim() : undefined,
     custom_price: typeof candidate.custom_price === "number" && Number.isFinite(candidate.custom_price) ? candidate.custom_price : undefined,
     custom_duration_minutes:
@@ -62,52 +77,13 @@ const sortOverrides = (overrides: DoctorServiceOverrideRecord[]): DoctorServiceO
       return -1;
     }
 
-    const leftLabel = leftOverride.custom_name ?? leftOverride.service_id ?? "";
-    const rightLabel = rightOverride.custom_name ?? rightOverride.service_id ?? "";
+    const leftLabel = leftOverride.custom_name ?? String(leftOverride.service_id ?? "");
+    const rightLabel = rightOverride.custom_name ?? String(rightOverride.service_id ?? "");
 
     return leftLabel.localeCompare(rightLabel, "ro", {
       sensitivity: "base",
     });
   });
-};
-
-const readRegistry = (): OverridesRegistry => {
-  if (typeof window === "undefined") {
-    return {};
-  }
-
-  const rawValue = window.localStorage.getItem(storageKey);
-
-  if (rawValue === null) {
-    return {};
-  }
-
-  try {
-    const parsedValue = JSON.parse(rawValue) as Record<string, unknown>;
-
-    return Object.fromEntries(
-      Object.entries(parsedValue).map(([registryKey, registryValue]) => {
-        const overrides = Array.isArray(registryValue)
-          ? registryValue
-              .map((overrideValue) => sanitizeOverride(overrideValue))
-              .filter((overrideValue): overrideValue is DoctorServiceOverrideRecord => overrideValue !== null)
-          : [];
-
-        return [registryKey, sortOverrides(overrides)];
-      }),
-    );
-  } catch {
-    return {};
-  }
-};
-
-const writeRegistry = (registry: OverridesRegistry): void => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(storageKey, JSON.stringify(registry));
-  window.dispatchEvent(new CustomEvent(storageEventName));
 };
 
 const buildRegistryKey = (doctorId: number): string => String(doctorId);
@@ -121,34 +97,7 @@ export const buildDoctorServiceOverrideId = (): string => {
 };
 
 export const useDoctorServiceOverridesRegistry = () => {
-  const [registry, setRegistry] = useState<OverridesRegistry>(() => readRegistry());
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const syncRegistry = (): void => {
-      setRegistry(readRegistry());
-    };
-
-    window.addEventListener("storage", syncRegistry);
-    window.addEventListener(storageEventName, syncRegistry);
-
-    return () => {
-      window.removeEventListener("storage", syncRegistry);
-      window.removeEventListener(storageEventName, syncRegistry);
-    };
-  }, []);
-
-  const updateRegistry = useCallback((updater: RegistryUpdater) => {
-    setRegistry((currentRegistry) => {
-      const nextRegistry = typeof updater === "function" ? updater(currentRegistry) : updater;
-      writeRegistry(nextRegistry);
-
-      return nextRegistry;
-    });
-  }, []);
+  const registry = useSyncExternalStore(subscribeToRegistry, getRegistrySnapshot, getRegistrySnapshot);
 
   const getOverrides = useCallback(
     (doctorId: number): DoctorServiceOverrideRecord[] => {
@@ -159,40 +108,47 @@ export const useDoctorServiceOverridesRegistry = () => {
 
   const upsertOverride = useCallback(
     (override: DoctorServiceOverrideRecord): void => {
-      updateRegistry((currentRegistry) => {
-        const registryKey = buildRegistryKey(override.doctor_id);
-        const currentOverrides = currentRegistry[registryKey] ?? [];
-        const existingIndex = currentOverrides.findIndex((currentOverride) => currentOverride.id === override.id);
-        const nextOverrides = [...currentOverrides];
+      const sanitizedOverride = sanitizeOverride(override);
 
-        if (existingIndex >= 0) {
-          nextOverrides[existingIndex] = override;
-        } else {
-          nextOverrides.push(override);
-        }
+      if (sanitizedOverride === null) {
+        return;
+      }
 
-        return {
-          ...currentRegistry,
-          [registryKey]: sortOverrides(nextOverrides),
-        };
-      });
+      const registryKey = buildRegistryKey(sanitizedOverride.doctor_id);
+      const doctorOverrides = overridesRegistry[registryKey] ?? [];
+      const existingIndex = doctorOverrides.findIndex((currentOverride) => currentOverride.id === sanitizedOverride.id);
+      const nextOverrides = [...doctorOverrides];
+
+      if (existingIndex >= 0) {
+        nextOverrides[existingIndex] = sanitizedOverride;
+      } else {
+        nextOverrides.push(sanitizedOverride);
+      }
+
+      overridesRegistry = {
+        ...overridesRegistry,
+        [registryKey]: sortOverrides(nextOverrides),
+      };
+      emitRegistryChange();
     },
-    [updateRegistry],
+    [],
   );
 
   const deleteOverride = useCallback(
     (doctorId: number, overrideId: string): void => {
-      updateRegistry((currentRegistry) => {
-        const registryKey = buildRegistryKey(doctorId);
-        const currentOverrides = currentRegistry[registryKey] ?? [];
+      const registryKey = buildRegistryKey(doctorId);
+      const doctorOverrides = overridesRegistry[registryKey] ?? [];
+      const nextOverrides = doctorOverrides.filter((override) => override.id !== overrideId);
 
-        return {
-          ...currentRegistry,
-          [registryKey]: currentOverrides.filter((override) => override.id !== overrideId),
-        };
-      });
+      overridesRegistry = nextOverrides.length === 0
+        ? Object.fromEntries(Object.entries(overridesRegistry).filter(([key]) => key !== registryKey))
+        : {
+            ...overridesRegistry,
+            [registryKey]: nextOverrides,
+          };
+      emitRegistryChange();
     },
-    [updateRegistry],
+    [],
   );
 
   return {

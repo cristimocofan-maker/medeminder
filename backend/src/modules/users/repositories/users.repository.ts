@@ -6,6 +6,8 @@ import type { UserRepositoryRecord, UsersListRepositoryRow } from "../types/user
 import {
   usersCountByFiltersQuery,
   usersCreateInsertQuery,
+  usersGetByEmailExcludingUserQuery,
+  usersGetByEmailQuery,
   usersGetByIdQuery,
   usersListByFiltersQuery,
   usersUpdateQuery,
@@ -52,6 +54,48 @@ export class UsersRepository {
 
   async getByUserIdAndClinicId(userId: number, clinicId: number): Promise<UserRepositoryRecord | null> {
     const result = await this.databaseClient.query<UserRepositoryRecord>(usersGetByIdQuery, [userId, clinicId]);
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+
+    return {
+      user_id: Number(row.user_id),
+      clinic_id: Number(row.clinic_id),
+      email: row.email,
+      password_hash: row.password_hash,
+      user_role_label: row.user_role_label,
+      is_active: Boolean(row.is_active),
+      created_at: String(row.created_at),
+      updated_at: String(row.updated_at),
+    };
+  }
+
+  async getByEmail(email: string): Promise<UserRepositoryRecord | null> {
+    const result = await this.databaseClient.query<UserRepositoryRecord>(usersGetByEmailQuery, [email]);
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+
+    return {
+      user_id: Number(row.user_id),
+      clinic_id: Number(row.clinic_id),
+      email: row.email,
+      password_hash: row.password_hash,
+      user_role_label: row.user_role_label,
+      is_active: Boolean(row.is_active),
+      created_at: String(row.created_at),
+      updated_at: String(row.updated_at),
+    };
+  }
+
+  async getByEmailExcludingUser(email: string, userId: number): Promise<UserRepositoryRecord | null> {
+    const result = await this.databaseClient.query<UserRepositoryRecord>(usersGetByEmailExcludingUserQuery, [email, userId]);
 
     if (result.rowCount === 0) {
       return null;

@@ -28,6 +28,17 @@ export interface SpecializationFixture {
   specialization_display_name: string;
 }
 
+export interface SpecializationServiceFixture {
+  service_id: number;
+  clinic_id: number;
+  specialization_id: number;
+  service_name: string;
+  price: number;
+  duration_minutes: number | null;
+  description: string | null;
+  is_active: boolean;
+}
+
 export interface DoctorFixture {
   doctor_id: number;
   clinic_id: number;
@@ -60,6 +71,12 @@ export interface AppointmentFixture {
   start_date_time: string;
   end_date_time: string;
   appointment_notes: string | null;
+  patient_action_token: string | null;
+  patient_action_token_expires_at: string | null;
+  patient_confirmation_status: string;
+  patient_confirmed_at: string | null;
+  patient_cancelled_at: string | null;
+  patient_reschedule_requested_at: string | null;
 }
 
 export interface MessageFixture {
@@ -119,6 +136,10 @@ const buildUniqueValue = (prefix: string): string => {
   return `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}`;
 };
 
+const buildAppointmentToken = (): string => {
+  return `${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "")}`;
+};
+
 const buildPhoneNumber = (): string => {
   const suffix = randomUUID().replace(/[^0-9]/g, "").padEnd(9, "7").slice(0, 9);
 
@@ -165,6 +186,7 @@ export const cleanupRegisteredData = async (registry: CleanupRegistry): Promise<
     { text: "DELETE FROM follow_ups WHERE clinic_id = ANY($1::int[]);", values: [clinicIds] },
     { text: "DELETE FROM messages WHERE clinic_id = ANY($1::int[]);", values: [clinicIds] },
     { text: "DELETE FROM appointments WHERE clinic_id = ANY($1::int[]);", values: [clinicIds] },
+    { text: "DELETE FROM specialization_services WHERE clinic_id = ANY($1::int[]);", values: [clinicIds] },
     { text: "DELETE FROM doctors WHERE clinic_id = ANY($1::int[]);", values: [clinicIds] },
     { text: "DELETE FROM patients WHERE clinic_id = ANY($1::int[]);", values: [clinicIds] },
     { text: "DELETE FROM specializations WHERE clinic_id = ANY($1::int[]);", values: [clinicIds] },
@@ -342,6 +364,53 @@ export const createDoctorFixture = async (
   return doctor;
 };
 
+export const createSpecializationServiceFixture = async (
+  registry: CleanupRegistry,
+  clinicId: number,
+  specializationId: number,
+  overrides: Partial<SpecializationServiceFixture> = {},
+): Promise<SpecializationServiceFixture> => {
+  const service = await queryOne<SpecializationServiceFixture>(
+    `
+      INSERT INTO specialization_services (
+        clinic_id,
+        specialization_id,
+        service_name,
+        price,
+        duration_minutes,
+        description,
+        is_active
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING
+        service_id,
+        clinic_id,
+        specialization_id,
+        service_name,
+        price,
+        duration_minutes,
+        description,
+        is_active;
+    `,
+    [
+      clinicId,
+      specializationId,
+      overrides.service_name ?? buildUniqueValue("service"),
+      overrides.price ?? 250,
+      overrides.duration_minutes ?? 30,
+      overrides.description ?? null,
+      overrides.is_active ?? true,
+    ],
+  );
+
+  if (service === null) {
+    throw new Error("Nu s-a putut crea serviciul de specializare de test.");
+  }
+
+  registry.clinicIds.add(clinicId);
+
+  return service;
+};
+
 export const createPatientFixture = async (
   registry: CleanupRegistry,
   clinicId: number,
@@ -417,8 +486,14 @@ export const createAppointmentFixture = async (
         end_date_time,
         appointment_notes,
         appointment_status,
-        confirmation_status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        confirmation_status,
+        patient_action_token,
+        patient_action_token_expires_at,
+        patient_confirmation_status,
+        patient_confirmed_at,
+        patient_cancelled_at,
+        patient_reschedule_requested_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING
         appointment_id,
         clinic_id,
@@ -428,7 +503,13 @@ export const createAppointmentFixture = async (
         confirmation_status,
         start_date_time,
         end_date_time,
-        appointment_notes;
+        appointment_notes,
+        patient_action_token,
+        patient_action_token_expires_at,
+        patient_confirmation_status,
+        patient_confirmed_at,
+        patient_cancelled_at,
+        patient_reschedule_requested_at;
     `,
     [
       clinicId,
@@ -439,6 +520,12 @@ export const createAppointmentFixture = async (
       overrides.appointment_notes ?? null,
       overrides.appointment_status ?? "Programată",
       overrides.confirmation_status ?? "Fără răspuns",
+      overrides.patient_action_token ?? buildAppointmentToken(),
+      overrides.patient_action_token_expires_at ?? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      overrides.patient_confirmation_status ?? "pending",
+      overrides.patient_confirmed_at ?? null,
+      overrides.patient_cancelled_at ?? null,
+      overrides.patient_reschedule_requested_at ?? null,
     ],
   );
 

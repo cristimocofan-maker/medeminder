@@ -23,13 +23,14 @@ import type { DoctorScheduleDay } from "../doctor-schedules/doctor-schedules.typ
 import { listDoctors, listSpecializationOptions } from "../doctors/doctors.api";
 import type { DoctorListItem, SpecializationOption } from "../doctors/doctors.types";
 import { createPatient } from "../patients/patients.api";
-import { calculateAgeLabelFromIsoDate, formatPatientBirthDate, normalizePatientCnpInput, parsePatientDemographicsFromCnp } from "../patients/patient-demographics";
+import { calculateAgeLabelFromIsoDate, formatPatientBirthDate, normalizePatientCnpInput, parsePatientDemographicsFromCnp, previewPatientDemographicsFromCnp } from "../patients/patient-demographics";
 import type { PatientListItem } from "../patients/patients.types";
-import { SmsPatientCard } from "../settings/components/SmsPatientCard";
-import { buildSmsContextForAppointment, useSmsGatewayLocalState } from "../settings/sms-gateway.local";
 import { createAppointment } from "./appointments.api";
 import { AppointmentServicesSelector } from "./components/AppointmentServicesSelector";
 import type { AppointmentListItem } from "./appointments.types";
+
+const APPOINTMENT_FLOW_FONT_FAMILY = '"Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+const APPOINTMENT_FLOW_LETTER_SPACING = "0.016em";
 
 type WizardStep = "doctor" | "schedule" | "patient";
 type PatientMode = "existing" | "new";
@@ -302,7 +303,6 @@ export const AppointmentsWizardPage = (): JSX.Element => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast, updateToast, dismissToast } = useToast();
-  const { templates: smsTemplates, connection: smsConnection, logPatientSms } = useSmsGatewayLocalState();
   const [searchParams] = useSearchParams();
   const [currentStep, setCurrentStep] = useState<WizardStep>("doctor");
   const [selectedSpecializationId, setSelectedSpecializationId] = useState<number | null>(null);
@@ -428,25 +428,12 @@ export const AppointmentsWizardPage = (): JSX.Element => {
     () => patients.find((patient) => patient.patient_id === selectedPatientId) ?? null,
     [patients, selectedPatientId],
   );
-  const wizardSmsPatientId = patientMode === "existing"
-    ? selectedPatientId !== null && selectedPatientId > 0 ? selectedPatientId : null
-    : resolvedNewPatientId;
-  const wizardSmsPhoneNumber = patientMode === "existing"
-    ? selectedPatient?.phone_number ?? ""
-    : newPatientDraft.phone_number;
-  const wizardSmsPatientName = patientMode === "existing"
-    ? selectedPatient?.patient_display_name ?? null
-    : newPatientDraft.patient_display_name.trim() === "" ? null : newPatientDraft.patient_display_name.trim();
-  const wizardSmsContext = useMemo(() => buildSmsContextForAppointment({
-    appointmentId: null,
-    patientName: wizardSmsPatientName,
-    doctorName: selectedDoctor?.doctor_display_name ?? null,
-    specialization: selectedDoctor?.specialization_display_name ?? null,
-    appointmentStart: selectedSlot?.start_date_time ?? null,
-    clinicName: null,
-    actionBasePath: smsConnection.patient_action_base_path,
-  }), [newPatientDraft.patient_display_name, selectedDoctor?.doctor_display_name, selectedDoctor?.specialization_display_name, selectedPatient?.patient_display_name, selectedSlot?.start_date_time, smsConnection.patient_action_base_path, wizardSmsPatientName]);
-  const derivedNewPatientDemographics = useMemo(() => parsePatientDemographicsFromCnp(newPatientDraft.cnp), [newPatientDraft.cnp]);
+  const derivedNewPatientDemographics = useMemo(() => previewPatientDemographicsFromCnp(newPatientDraft.cnp), [newPatientDraft.cnp]);
+  const hasInvalidNewPatientCnp = useMemo(() => {
+    const normalizedCnp = normalizePatientCnpInput(newPatientDraft.cnp);
+
+    return normalizedCnp.length === 13 && parsePatientDemographicsFromCnp(normalizedCnp) === null;
+  }, [newPatientDraft.cnp]);
   const selectedPatientAgeLabel = useMemo(
     () => calculateAgeLabelFromIsoDate(selectedPatient?.birth_date ?? null),
     [selectedPatient?.birth_date],
@@ -771,11 +758,14 @@ export const AppointmentsWizardPage = (): JSX.Element => {
   const isCompactWizardChrome = currentStep !== "doctor";
 
   return (
-    <section className="min-w-0 space-y-4">
-      <div className={`rounded-[36px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(26,138,131,0.12),_transparent_32%),linear-gradient(180deg,#ffffff_0%,#f8fbfb_100%)] shadow-sm ${isCompactWizardChrome ? "p-4 md:p-5" : "p-5 md:p-7"}`}>
+    <section
+      className="min-w-0 space-y-4 text-slate-700"
+      style={{ fontFamily: APPOINTMENT_FLOW_FONT_FAMILY, fontKerning: "normal", letterSpacing: APPOINTMENT_FLOW_LETTER_SPACING }}
+    >
+      <div className={`rounded-[36px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(26,138,131,0.12),_transparent_32%),linear-gradient(180deg,#ffffff_0%,#f8fbfb_100%)] ${isCompactWizardChrome ? "p-4 md:p-5" : "p-5 md:p-7"}`}>
         <div className={`flex flex-col ${isCompactWizardChrome ? "gap-3" : "gap-4"} lg:flex-row lg:items-start lg:justify-between`}>
           <div className="max-w-3xl">
-            <h1 className={`${isCompactWizardChrome ? "text-[2rem] leading-tight md:text-[2.2rem]" : "text-3xl md:text-[2.6rem] md:leading-tight"} font-semibold text-ink`}>Creează rapid o programare</h1>
+            <h1 className={`${isCompactWizardChrome ? "text-[2rem] leading-[1.08] md:text-[2.2rem]" : "text-3xl md:text-[2.6rem] md:leading-[1.08]"} font-semibold tracking-[0.012em] text-ink`}>Creează rapid o programare</h1>
           </div>
 
           <Link className={`button-secondary gap-2 self-start ${isCompactWizardChrome ? "min-h-10 px-4 py-2.5 text-sm" : "px-4 py-3"}`} to="/programari">
@@ -795,19 +785,19 @@ export const AppointmentsWizardPage = (): JSX.Element => {
 
             return (
               <button
-                className={`rounded-[24px] border text-left transition ${isCompactWizardChrome ? "px-3.5 py-3" : "px-4 py-4"} ${isActive ? "border-primary/20 bg-primary text-white shadow-lg shadow-primary/15" : isCompleted ? "border-emerald-200 bg-emerald-50 text-emerald-900" : isBlocked ? "border-slate-200 bg-white text-slate-400" : "border-slate-200 bg-white text-ink hover:border-primary/20 hover:bg-primary/5"}`}
+                className={`rounded-[24px] border text-left transition ${isCompactWizardChrome ? "px-3.5 py-3" : "px-4 py-4"} ${isActive ? "border-primary/20 bg-primary text-white" : isCompleted ? "border-emerald-200 bg-emerald-50 text-emerald-900" : isBlocked ? "border-slate-200 bg-white text-slate-400" : "border-slate-200 bg-white text-ink hover:border-primary/20 hover:bg-primary/5"}`}
                 disabled={isBlocked}
                 key={step.id}
                 onClick={() => setCurrentStep(step.id)}
                 type="button"
               >
                 <div className="flex items-start gap-3">
-                  <div className={`flex ${isCompactWizardChrome ? "h-9 w-9 text-xs" : "h-10 w-10 text-sm"} items-center justify-center rounded-full font-semibold ${isActive ? "bg-white/20 text-white" : isCompleted ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500"}`}>
+                  <div className={`flex ${isCompactWizardChrome ? "h-9 w-9 text-sm" : "h-10 w-10 text-sm"} items-center justify-center rounded-full font-semibold ${isActive ? "bg-white/20 text-white" : isCompleted ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500"}`}>
                     {isCompleted ? <Check className="h-4 w-4" /> : index + 1}
                   </div>
                   <div>
-                    <p className={`${isCompactWizardChrome ? "text-[13px]" : "text-sm"} font-semibold ${isActive ? "text-white" : isCompleted ? "text-emerald-900" : "text-current"}`}>{step.title}</p>
-                    <p className={`mt-0.5 ${isCompactWizardChrome ? "text-[11px]" : "text-xs"} ${isActive ? "text-white/80" : isCompleted ? "text-emerald-700" : "text-slate-500"}`}>{step.description}</p>
+                    <p className={`text-sm font-semibold leading-5 tracking-[0.012em] ${isActive ? "text-white" : isCompleted ? "text-emerald-900" : "text-current"}`}>{step.title}</p>
+                    <p className={`mt-0.5 text-sm leading-5 tracking-[0.008em] ${isActive ? "text-white/80" : isCompleted ? "text-emerald-700" : "text-slate-500"}`}>{step.description}</p>
                   </div>
                 </div>
               </button>
@@ -816,7 +806,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
         </div>
       </div>
 
-      <div className={`rounded-[36px] border border-slate-200 bg-white shadow-sm ${isCompactWizardChrome ? "p-4 md:p-5" : "p-5 md:p-6"}`}>
+      <div className={`rounded-[36px] border border-slate-200 bg-white ${isCompactWizardChrome ? "p-4 md:p-5" : "p-5 md:p-6"}`}>
         {specializationsQuery.isLoading || doctorsQuery.isLoading || patientsQuery.isLoading ? (
           <div className="flex min-h-[480px] items-center justify-center rounded-[28px] border border-slate-200 bg-slate-50 px-4 py-10 text-primary">
             <div className="flex items-center gap-3 text-base font-semibold">
@@ -839,11 +829,11 @@ export const AppointmentsWizardPage = (): JSX.Element => {
             {currentStep === "doctor" ? (
               <div className="space-y-6">
                 <div className="rounded-[30px] border border-slate-200 bg-slate-50/70 p-4">
-                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Specializare</p>
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600">Specializare</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {visibleSpecializations.map((specialization: SpecializationOption) => (
                       <button
-                        className={`rounded-full border px-4 py-2.5 text-sm font-semibold transition ${selectedSpecializationId === specialization.specialization_id ? "border-primary/20 bg-primary text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-primary/20 hover:bg-primary/5 hover:text-primary"}`}
+                        className={`rounded-full border px-4 py-2.5 text-sm font-semibold transition ${selectedSpecializationId === specialization.specialization_id ? "border-primary/20 bg-primary text-white" : "border-slate-200 bg-white text-slate-700 hover:border-primary/20 hover:bg-primary/5 hover:text-primary"}`}
                         key={specialization.specialization_id}
                         onClick={() => {
                           setSelectedSpecializationId(specialization.specialization_id);
@@ -859,16 +849,16 @@ export const AppointmentsWizardPage = (): JSX.Element => {
 
                 <div className="grid min-w-0 gap-4 2xl:grid-cols-[220px_320px_minmax(0,1fr)]">
                   <div className="rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f7fafb_100%)] p-4">
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Context</p>
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600">Context</p>
                     <div className="mt-4 space-y-3">
                       <div className="rounded-3xl bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Specializarea selectată</p>
+                        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Specializarea selectată</p>
                         <p className="mt-2 text-lg font-semibold text-ink">
                           {visibleSpecializations.find((specialization) => specialization.specialization_id === selectedSpecializationId)?.specialization_display_name ?? "Alege din listă"}
                         </p>
                       </div>
                       <div className="rounded-3xl bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Medici disponibili</p>
+                        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Medici disponibili</p>
                         <p className="mt-2 text-lg font-semibold text-ink">{filteredDoctors.length}</p>
                         <p className="mt-1 text-sm text-slate-500">Lista rămâne deschisă și filtrată în timp real.</p>
                       </div>
@@ -877,7 +867,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
 
                   <div className="min-w-0 rounded-[30px] border border-slate-200 bg-white p-4">
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="wizard-doctor-search">
+                      <label className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600" htmlFor="wizard-doctor-search">
                         Medic activ
                       </label>
                       <div className="relative">
@@ -916,7 +906,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                                 <p className="mt-1 truncate text-sm text-slate-500">{doctor.specialization_display_name}</p>
                               </div>
                               {isSelected ? (
-                                <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white">Selectat</span>
+                                    <span className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-white">Selectat</span>
                               ) : null}
                             </button>
                           );
@@ -939,8 +929,8 @@ export const AppointmentsWizardPage = (): JSX.Element => {
             {currentStep === "schedule" ? (
               <div className="space-y-4">
                 <div className="flex flex-col gap-1.5">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 w-fit">Pasul 2</span>
-                  <h2 className="text-[1.8rem] font-semibold leading-tight text-ink">Alege intervalul</h2>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 w-fit">Pasul 2</span>
+                  <h2 className="text-[1.8rem] font-semibold leading-[1.12] tracking-[0.01em] text-ink">Alege intervalul</h2>
                   <p className="text-sm text-slate-500">Selectezi un slot liber din programul real al medicului ales.</p>
                 </div>
 
@@ -978,9 +968,9 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                     ) : (
                       <div className="min-w-0 space-y-4">
                         <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
-                          <div className="inline-flex w-full rounded-2xl bg-white p-1 shadow-sm sm:w-auto">
+                          <div className="inline-flex w-full rounded-2xl bg-white p-1 sm:w-auto">
                             <button
-                              className={`min-h-11 flex-1 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${availabilityViewMode === "week" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
+                              className={`min-h-11 flex-1 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${availabilityViewMode === "week" ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-50"}`}
                               onClick={() => {
                                 setAvailabilityViewMode("week");
                                 setAvailabilityPeriodIndex(0);
@@ -990,7 +980,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                               Săptămână
                             </button>
                             <button
-                              className={`min-h-11 flex-1 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${availabilityViewMode === "month" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
+                              className={`min-h-11 flex-1 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${availabilityViewMode === "month" ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-50"}`}
                               onClick={() => {
                                 setAvailabilityViewMode("month");
                                 setAvailabilityPeriodIndex(0);
@@ -1002,7 +992,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                           </div>
 
                           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between 2xl:justify-end">
-                            <span className="rounded-full bg-white px-3 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm sm:text-left">{availabilityPeriodLabel}</span>
+                            <span className="rounded-full bg-white px-3 py-1.5 text-center text-sm font-semibold text-slate-700 sm:text-left">{availabilityPeriodLabel}</span>
                             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                               <button className="button-secondary min-h-11 justify-center gap-2 px-4 py-2" onClick={() => setAvailabilityPeriodIndex((currentValue) => currentValue - 1)} type="button">
                               <ChevronLeft className="h-4 w-4" />
@@ -1030,16 +1020,16 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                               className="grid w-full gap-1"
                               style={{ gridTemplateColumns: `96px repeat(${availabilityTimeLabels.length}, minmax(48px, 1fr))` }}
                             >
-                              <div className="sticky left-0 z-20 flex min-h-[44px] items-center rounded-[16px] border border-white/80 bg-white/95 px-2.5 shadow-sm lg:min-h-[48px]">
+                              <div className="sticky left-0 z-20 flex min-h-[44px] items-center rounded-[16px] border border-white/80 bg-white/95 px-2.5 lg:min-h-[48px]">
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Zi</p>
-                                  <p className="mt-0.5 text-[11px] font-semibold text-slate-600 lg:text-xs">Program</p>
+                                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Zi</p>
+                                  <p className="mt-0.5 text-sm font-semibold text-slate-600">Program</p>
                                 </div>
                               </div>
 
                               {availabilityTimeLabels.map((timeLabel) => (
                                 <div
-                                  className="flex min-h-[44px] items-center justify-center rounded-[16px] border border-white/80 bg-white/95 px-1 text-center text-[11px] font-semibold text-slate-700 shadow-sm lg:min-h-[48px]"
+                                  className="flex min-h-[44px] items-center justify-center rounded-[16px] border border-white/80 bg-white/95 px-1 text-center text-sm font-semibold text-slate-700 lg:min-h-[48px]"
                                   key={`wizard-header-${timeLabel}`}
                                 >
                                   {timeLabel}
@@ -1051,10 +1041,10 @@ export const AppointmentsWizardPage = (): JSX.Element => {
 
                                 return (
                                   <div className="contents" key={`wizard-row-${day.value}`}>
-                                    <div className={`sticky left-0 z-10 flex min-h-[50px] items-center rounded-[16px] border px-2.5 text-left lg:min-h-[58px] ${selectedSlot?.day_value === day.value ? "border-primary/20 bg-primary/10 text-primary" : day.isToday ? "border-[#cfd9d8] bg-[#f2f5f5] text-slate-700" : "border-white/80 bg-white/95 text-slate-600 shadow-sm"}`}>
+                                    <div className={`sticky left-0 z-10 flex min-h-[50px] items-center rounded-[16px] border px-2.5 text-left lg:min-h-[58px] ${selectedSlot?.day_value === day.value ? "border-primary/20 bg-primary/10 text-primary" : day.isToday ? "border-[#cfd9d8] bg-[#f2f5f5] text-slate-700" : "border-white/80 bg-white/95 text-slate-600"}`}>
                                       <div>
-                                        <span className="block text-[11px] font-semibold lg:text-xs">{day.title}</span>
-                                        <span className="mt-0.5 block text-[11px] opacity-80">{day.dayNumber} {monthLabel}</span>
+                                        <span className="block text-sm font-semibold">{day.title}</span>
+                                        <span className="mt-0.5 block text-sm opacity-80">{day.dayNumber} {monthLabel}</span>
                                       </div>
                                     </div>
 
@@ -1068,7 +1058,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                                       if (availableSlot !== null) {
                                         return (
                                           <button
-                                            className={`min-h-[50px] rounded-[16px] border px-1 text-[11px] font-semibold transition lg:min-h-[58px] ${isSelectedSlot ? "border-[#2f8885] bg-[#2f8885] text-white shadow-md shadow-[#2f8885]/25" : "border-[#d6dede] bg-[#eef2f2] text-slate-700 hover:border-[#bcc9c9] hover:bg-[#e4ebeb]"}`}
+                                            className={`min-h-[50px] rounded-[16px] border px-1 text-sm font-semibold transition lg:min-h-[58px] ${isSelectedSlot ? "border-[#2f8885] bg-[#2f8885] text-white" : "border-[#d6dede] bg-[#eef2f2] text-slate-700 hover:border-[#bcc9c9] hover:bg-[#e4ebeb]"}`}
                                             key={`${day.value}-${timeLabel}`}
                                             onClick={() => {
                                               setSelectedSlot({
@@ -1108,8 +1098,8 @@ export const AppointmentsWizardPage = (): JSX.Element => {
             {currentStep === "patient" ? (
               <div className="space-y-6">
                 <div className="flex flex-col gap-2">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 w-fit">Pasul 3</span>
-                  <h2 className="text-2xl font-semibold text-ink">Alege pacientul</h2>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 w-fit">Pasul 3</span>
+                  <h2 className="text-2xl font-semibold tracking-[0.01em] text-ink">Alege pacientul</h2>
                   <p className="text-sm text-slate-500">Cauți un pacient existent sau adaugi rapid unul nou, fără să părăsești fluxul de programare.</p>
                 </div>
 
@@ -1118,24 +1108,24 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                     <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Rezumat final</p>
                     <div className="mt-4 space-y-3">
                       <div className="rounded-3xl bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Medic</p>
+                        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Medic</p>
                         <p className="mt-2 text-lg font-semibold text-ink">{selectedDoctor?.doctor_display_name ?? "-"}</p>
                       </div>
                       <div className="rounded-3xl bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Interval</p>
+                        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Interval</p>
                         <p className="mt-2 text-lg font-semibold text-ink">{selectedSlot === null ? "-" : `${selectedSlot.day_value} · ${selectedSlot.label}`}</p>
                       </div>
                       <div className="rounded-3xl bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Mod pacient</p>
+                        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Mod pacient</p>
                         <p className="mt-2 text-lg font-semibold text-ink">{patientMode === "existing" ? "Pacient existent" : "Pacient nou"}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="min-w-0 space-y-4">
-                    <div className="inline-flex rounded-[24px] border border-slate-200 bg-white p-1 shadow-sm">
+                    <div className="inline-flex rounded-[24px] border border-slate-200 bg-white p-1">
                       <button
-                        className={`min-h-12 rounded-[18px] px-4 py-2 text-sm font-semibold transition ${patientMode === "existing" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
+                        className={`min-h-12 rounded-[18px] px-4 py-2 text-[15px] font-semibold transition ${patientMode === "existing" ? "bg-primary text-white" : "text-slate-700 hover:bg-slate-50"}`}
                         disabled={patients.length === 0}
                         onClick={() => setPatientMode("existing")}
                         type="button"
@@ -1143,7 +1133,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                         Pacient existent
                       </button>
                       <button
-                        className={`min-h-12 rounded-[18px] px-4 py-2 text-sm font-semibold transition ${patientMode === "new" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
+                        className={`min-h-12 rounded-[18px] px-4 py-2 text-[15px] font-semibold transition ${patientMode === "new" ? "bg-primary text-white" : "text-slate-700 hover:bg-slate-50"}`}
                         onClick={() => setPatientMode("new")}
                         type="button"
                       >
@@ -1159,7 +1149,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                           </div>
                         ) : (
                           <>
-                            <label className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="wizard-patient-search">
+                            <label className="text-[13px] font-semibold uppercase tracking-[0.18em] text-slate-600" htmlFor="wizard-patient-search">
                               Caută pacient
                             </label>
                             <div className="relative mt-2">
@@ -1175,24 +1165,24 @@ export const AppointmentsWizardPage = (): JSX.Element => {
 
                             <div className="mt-4 max-h-[320px] overflow-y-auto rounded-3xl border border-slate-100">
                               {filteredPatients.length === 0 ? (
-                                <div className="px-4 py-6 text-sm text-slate-500">Nu am găsit pacienți pentru filtrarea curentă.</div>
+                                <div className="px-4 py-6 text-base text-slate-600">Nu am găsit pacienți pentru filtrarea curentă.</div>
                               ) : (
                                 filteredPatients.map((patient) => {
                                   const isSelected = selectedPatientId === patient.patient_id;
 
                                   return (
                                     <button
-                                      className={`flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition ${isSelected ? "bg-primary/5 text-ink" : "text-slate-600 hover:bg-slate-50 hover:text-ink"}`}
+                                      className={`flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition ${isSelected ? "bg-primary/5 text-ink" : "text-slate-700 hover:bg-slate-50 hover:text-ink"}`}
                                       key={patient.patient_id}
                                       onClick={() => setSelectedPatientId(patient.patient_id)}
                                       type="button"
                                     >
                                       <div>
-                                        <p className="text-base font-semibold">{patient.patient_display_name}</p>
-                                        <p className="mt-1 text-sm text-slate-500">{patient.phone_number}</p>
-                                        <p className="mt-1 text-xs text-slate-400">{patient.cnp ?? "Fără CNP"}</p>
+                                        <p className="text-lg font-semibold">{patient.patient_display_name}</p>
+                                        <p className="mt-1 text-base text-slate-600">{patient.phone_number}</p>
+                                        <p className="mt-1 text-sm text-slate-500">{patient.cnp ?? "Fără CNP"}</p>
                                       </div>
-                                      {isSelected ? <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white">Selectat</span> : null}
+                                      {isSelected ? <span className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-white">Selectat</span> : null}
                                     </button>
                                   );
                                 })
@@ -1202,24 +1192,24 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                             {selectedPatient !== null ? (
                               <div className="mt-4 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 md:grid-cols-2 xl:grid-cols-3">
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">CNP</p>
-                                  <p className="mt-1 text-sm font-semibold text-ink">{selectedPatient.cnp ?? "-"}</p>
+                                  <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">CNP</p>
+                                  <p className="mt-1 text-base font-semibold text-ink">{selectedPatient.cnp ?? "-"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Sex</p>
-                                  <p className="mt-1 text-sm font-semibold text-ink">{selectedPatient.sex ?? "-"}</p>
+                                  <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sex</p>
+                                  <p className="mt-1 text-base font-semibold text-ink">{selectedPatient.sex ?? "-"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Data nașterii</p>
-                                  <p className="mt-1 text-sm font-semibold text-ink">{formatPatientBirthDate(selectedPatient.birth_date) || "-"}</p>
+                                  <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">Data nașterii</p>
+                                  <p className="mt-1 text-base font-semibold text-ink">{formatPatientBirthDate(selectedPatient.birth_date) || "-"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Vârstă</p>
-                                  <p className="mt-1 text-sm font-semibold text-ink">{selectedPatientAgeLabel || "-"}</p>
+                                  <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">Vârstă</p>
+                                  <p className="mt-1 text-base font-semibold text-ink">{selectedPatientAgeLabel || "-"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Oraș</p>
-                                  <p className="mt-1 text-sm font-semibold text-ink">{selectedPatient.city ?? "-"}</p>
+                                  <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">Oraș</p>
+                                  <p className="mt-1 text-base font-semibold text-ink">{selectedPatient.city ?? "-"}</p>
                                 </div>
                               </div>
                             ) : null}
@@ -1227,14 +1217,14 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                         )}
                       </div>
                     ) : (
-                      <div className="rounded-[30px] border border-slate-200 bg-white p-4">
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="rounded-[30px] border border-slate-200 bg-white p-4 md:p-5">
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.45fr)_minmax(260px,1.2fr)_minmax(220px,0.95fr)_minmax(180px,0.85fr)] xl:items-start">
                           <div>
-                            <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="wizard-new-patient-name">
+                            <label className="mb-2 block text-[15px] font-semibold text-ink" htmlFor="wizard-new-patient-name">
                               Nume pacient
                             </label>
                             <input
-                              className="input-base"
+                              className="input-base text-[1.05rem] text-ink placeholder:text-slate-400"
                               id="wizard-new-patient-name"
                               onChange={(event) => setNewPatientDraft((currentValue) => ({ ...currentValue, patient_display_name: event.target.value }))}
                               placeholder="Ex. Popescu Ion"
@@ -1243,11 +1233,11 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                           </div>
 
                           <div>
-                            <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="wizard-new-patient-cnp">
+                            <label className="mb-2 block text-[15px] font-semibold text-ink" htmlFor="wizard-new-patient-cnp">
                               CNP
                             </label>
                             <input
-                              className="input-base"
+                              className="input-base text-[1.05rem] text-ink placeholder:text-slate-400"
                               id="wizard-new-patient-cnp"
                               inputMode="numeric"
                               maxLength={13}
@@ -1255,15 +1245,15 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                               placeholder="Obligatoriu"
                               value={newPatientDraft.cnp}
                             />
-                            <p className="mt-2 text-xs text-slate-500">CNP-ul este salvat în DB și derivă sexul și data nașterii persistate.</p>
+                            {hasInvalidNewPatientCnp ? <p className="mt-2 text-sm font-semibold text-amber-700">Atenție: CNP invalid.</p> : null}
                           </div>
 
                           <div>
-                            <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="wizard-new-patient-phone">
+                            <label className="mb-2 block text-[15px] font-semibold text-ink" htmlFor="wizard-new-patient-phone">
                               Telefon
                             </label>
                             <input
-                              className="input-base"
+                              className="input-base text-[1.05rem] text-ink placeholder:text-slate-400"
                               id="wizard-new-patient-phone"
                               onChange={(event) => setNewPatientDraft((currentValue) => ({ ...currentValue, phone_number: event.target.value }))}
                               placeholder="07xxxxxxxx"
@@ -1272,11 +1262,11 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                           </div>
 
                           <div>
-                            <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="wizard-new-patient-city">
+                            <label className="mb-2 block text-[15px] font-semibold text-ink" htmlFor="wizard-new-patient-city">
                               Oraș
                             </label>
                             <input
-                              className="input-base"
+                              className="input-base text-[1.05rem] text-ink placeholder:text-slate-400"
                               id="wizard-new-patient-city"
                               onChange={(event) => setNewPatientDraft((currentValue) => ({ ...currentValue, city: event.target.value }))}
                               placeholder="Obligatoriu"
@@ -1287,16 +1277,16 @@ export const AppointmentsWizardPage = (): JSX.Element => {
 
                         <div className="mt-4 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 md:grid-cols-3">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Sex derivat</p>
-                            <p className="mt-1 text-sm font-semibold text-ink">{derivedNewPatientDemographics?.sex ?? "-"}</p>
+                            <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sex derivat</p>
+                            <p className="mt-1 text-base font-semibold text-ink">{derivedNewPatientDemographics?.sex ?? "-"}</p>
                           </div>
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Data nașterii</p>
-                            <p className="mt-1 text-sm font-semibold text-ink">{derivedNewPatientDemographics?.birthDateDisplay ?? "-"}</p>
+                            <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">Data nașterii</p>
+                            <p className="mt-1 text-base font-semibold text-ink">{derivedNewPatientDemographics?.birthDateDisplay ?? "-"}</p>
                           </div>
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Vârstă</p>
-                            <p className="mt-1 text-sm font-semibold text-ink">{calculateAgeLabelFromIsoDate(derivedNewPatientDemographics?.birthDateIso ?? null) || "-"}</p>
+                            <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-500">Vârstă</p>
+                            <p className="mt-1 text-base font-semibold text-ink">{calculateAgeLabelFromIsoDate(derivedNewPatientDemographics?.birthDateIso ?? null) || "-"}</p>
                           </div>
                         </div>
 
@@ -1326,11 +1316,11 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                     )}
 
                     <div className="rounded-[30px] border border-slate-200 bg-white p-4">
-                      <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="wizard-appointment-notes">
+                      <label className="mb-2 block text-[15px] font-semibold text-ink" htmlFor="wizard-appointment-notes">
                         Notițe programare
                       </label>
                       <textarea
-                        className="input-base min-h-[120px] resize-y"
+                        className="input-base min-h-[120px] resize-y text-[1.02rem] text-ink placeholder:text-slate-400"
                         id="wizard-appointment-notes"
                         onChange={(event) => setAppointmentNotes(event.target.value)}
                         placeholder="Detalii utile pentru echipă"
@@ -1338,26 +1328,6 @@ export const AppointmentsWizardPage = (): JSX.Element => {
                       />
                     </div>
 
-                    <SmsPatientCard
-                      defaultTemplateKey="confirmation"
-                      onSend={(payload) => {
-                        const historyItem = logPatientSms(payload);
-
-                        showToast({
-                          variant: historyItem.status === "sent" ? "success" : historyItem.status === "failed" ? "error" : "loading",
-                          title: historyItem.status === "sent" ? "SMS pacient pregătit" : historyItem.status === "failed" ? "SMS pacient eșuat" : "SMS pacient în așteptare",
-                          description: historyItem.provider_response ?? "Mesajul a fost înregistrat local.",
-                        });
-
-                        return historyItem;
-                      }}
-                      patientId={wizardSmsPatientId}
-                      phoneNumber={wizardSmsPhoneNumber}
-                      previewContext={wizardSmsContext}
-                      subtitle="Poți pregăti imediat mesajul pentru pacientul selectat. Pentru pacient nou, trimiterea devine activă după ce există un `patient_id` numeric real."
-                      templates={smsTemplates}
-                      title="SMS pacient"
-                    />
                   </div>
                 </div>
               </div>
@@ -1366,23 +1336,23 @@ export const AppointmentsWizardPage = (): JSX.Element => {
         )}
       </div>
 
-      <div className="sticky bottom-4 z-20 min-w-0 rounded-[28px] border border-slate-200 bg-white/96 p-4 shadow-xl shadow-slate-900/5 backdrop-blur md:p-5">
+      <div className="sticky bottom-4 z-20 min-w-0 rounded-[28px] border border-slate-200 bg-white/96 p-4 backdrop-blur md:p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-3xl bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Specializare</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Specializare</p>
               <p className="mt-1 text-sm font-semibold text-ink">{selectedDoctor?.specialization_display_name ?? "Nealeasă"}</p>
             </div>
             <div className="rounded-3xl bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Medic</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Medic</p>
               <p className="mt-1 text-sm font-semibold text-ink">{selectedDoctor?.doctor_display_name ?? "Neales"}</p>
             </div>
             <div className="rounded-3xl bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Interval</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Interval</p>
               <p className="mt-1 text-sm font-semibold text-ink">{selectedSlot === null ? "Neales" : `${selectedSlot.day_value} · ${selectedSlot.label}`}</p>
             </div>
             <div className="rounded-3xl bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Pacient</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Pacient</p>
               <p className="mt-1 text-sm font-semibold text-ink">
                 {selectedPatient !== null
                   ? selectedPatient.patient_display_name
@@ -1407,7 +1377,7 @@ export const AppointmentsWizardPage = (): JSX.Element => {
 
             {currentStep === "doctor" ? (
               <button className="button-primary gap-2" disabled={!canContinueFromDoctor} onClick={() => setCurrentStep("schedule")} type="button">
-                Continuă la interval
+                Alege data programării
                 <ArrowRight className="h-4 w-4" />
               </button>
             ) : null}

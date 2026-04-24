@@ -10,6 +10,7 @@ export const appointmentsListByFiltersQuery = `
     a.start_date_time,
     a.end_date_time,
     a.appointment_notes,
+    a.patient_confirmation_status,
     a.created_at,
     a.updated_at
   FROM appointments a
@@ -71,6 +72,12 @@ export const appointmentsGetByIdQuery = `
     a.start_date_time,
     a.end_date_time,
     a.appointment_notes,
+    a.patient_action_token,
+    a.patient_action_token_expires_at,
+    a.patient_confirmation_status,
+    a.patient_confirmed_at,
+    a.patient_cancelled_at,
+    a.patient_reschedule_requested_at,
     a.created_at,
     a.updated_at
   FROM appointments a
@@ -94,7 +101,10 @@ export const appointmentsCreateInsertQuery = `
     end_date_time,
     appointment_notes,
     appointment_status,
-    confirmation_status
+    confirmation_status,
+    patient_action_token,
+    patient_action_token_expires_at,
+    patient_confirmation_status
   ) VALUES (
     $1,
     $2,
@@ -103,7 +113,10 @@ export const appointmentsCreateInsertQuery = `
     $5,
     $6,
     $7,
-    $8
+    $8,
+    $9,
+    $10,
+    $11
   )
   RETURNING appointment_id;
 `;
@@ -127,6 +140,88 @@ export const appointmentsConfirmQuery = `
   SET
     confirmation_status = $3,
     appointment_status = $4,
+    updated_at = CURRENT_TIMESTAMP
+  WHERE appointment_id = $1
+    AND clinic_id = $2
+  RETURNING appointment_id;
+`;
+
+export const appointmentsGetByPatientActionTokenQuery = `
+  SELECT
+    a.appointment_id,
+    a.clinic_id,
+    a.doctor_id,
+    d.display_name AS doctor_display_name,
+    a.patient_id,
+    p.display_name AS patient_display_name,
+    p.email AS patient_email,
+    a.appointment_status,
+    a.confirmation_status,
+    a.start_date_time,
+    a.end_date_time,
+    a.appointment_notes,
+    a.patient_action_token,
+    a.patient_action_token_expires_at,
+    a.patient_confirmation_status,
+    a.patient_confirmed_at,
+    a.patient_cancelled_at,
+    a.patient_reschedule_requested_at,
+    latest_message.message_id AS latest_email_message_id,
+    a.created_at,
+    a.updated_at
+  FROM appointments a
+  INNER JOIN doctors d
+    ON d.doctor_id = a.doctor_id
+   AND d.clinic_id = a.clinic_id
+  INNER JOIN patients p
+    ON p.patient_id = a.patient_id
+   AND p.clinic_id = a.clinic_id
+  LEFT JOIN LATERAL (
+    SELECT m.message_id
+    FROM messages m
+    WHERE m.clinic_id = a.clinic_id
+      AND m.appointment_id = a.appointment_id
+      AND m.channel_type = 'Email'
+    ORDER BY m.created_at DESC, m.message_id DESC
+    LIMIT 1
+  ) latest_message ON TRUE
+  WHERE a.patient_action_token = $1
+  LIMIT 1;
+`;
+
+export const appointmentsMarkPatientConfirmedQuery = `
+  UPDATE appointments
+  SET
+    patient_confirmation_status = 'confirmed',
+    patient_confirmed_at = COALESCE(patient_confirmed_at, CURRENT_TIMESTAMP),
+    confirmation_status = 'Răspuns DA',
+    appointment_status = 'Confirmată',
+    updated_at = CURRENT_TIMESTAMP
+  WHERE appointment_id = $1
+    AND clinic_id = $2
+  RETURNING appointment_id;
+`;
+
+export const appointmentsMarkPatientCancelledQuery = `
+  UPDATE appointments
+  SET
+    patient_confirmation_status = 'cancelled',
+    patient_cancelled_at = COALESCE(patient_cancelled_at, CURRENT_TIMESTAMP),
+    confirmation_status = 'Răspuns NU',
+    appointment_status = 'Anulată',
+    updated_at = CURRENT_TIMESTAMP
+  WHERE appointment_id = $1
+    AND clinic_id = $2
+  RETURNING appointment_id;
+`;
+
+export const appointmentsMarkPatientRescheduleRequestedQuery = `
+  UPDATE appointments
+  SET
+    patient_confirmation_status = 'reschedule_requested',
+    patient_reschedule_requested_at = COALESCE(patient_reschedule_requested_at, CURRENT_TIMESTAMP),
+    confirmation_status = 'Răspuns REPROGRAMEAZĂ',
+    appointment_status = 'Cerere de reprogramare',
     updated_at = CURRENT_TIMESTAMP
   WHERE appointment_id = $1
     AND clinic_id = $2

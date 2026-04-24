@@ -1,4 +1,4 @@
-import { CheckCircle2, Radio, Save } from "lucide-react";
+import { CheckCircle2, Radio, Save, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { SmsGatewayConnectionConfig } from "../sms-gateway.types";
 import { formatSmsTimestamp } from "../sms-gateway.local";
@@ -12,6 +12,7 @@ interface SmsGatewayConnectionCardProps {
 export const SmsGatewayConnectionCard = ({ connection, onSave, onCheckConnection }: SmsGatewayConnectionCardProps): JSX.Element => {
   const [draft, setDraft] = useState<SmsGatewayConnectionConfig>(connection);
   const [lastAction, setLastAction] = useState<string | null>(null);
+  const [showToken, setShowToken] = useState(false);
 
   useEffect(() => {
     setDraft(connection);
@@ -35,7 +36,7 @@ export const SmsGatewayConnectionCard = ({ connection, onSave, onCheckConnection
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
           <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="sms-provider-name">
             Provider SMS
@@ -61,7 +62,64 @@ export const SmsGatewayConnectionCard = ({ connection, onSave, onCheckConnection
             value={draft.sender_name}
           />
         </div>
-
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="sms-username">
+            Username
+          </label>
+          <input
+            className="input-base"
+            id="sms-username"
+            onChange={(event) => setDraft((currentValue) => ({ ...currentValue, username: event.target.value }))}
+            placeholder="Username API"
+            value={draft.username ?? ""}
+          />
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="sms-token">
+            Token provider
+          </label>
+          <div className="relative">
+            <input
+              className="input-base pr-10"
+              id="sms-token"
+              onChange={(event) => setDraft((currentValue) => ({ ...currentValue, token: event.target.value }))}
+              placeholder="Introdu token-ul SMSsense aici"
+              value={draft.token ?? ""}
+              type={showToken ? "text" : "password"}
+            />
+            <button
+              type="button"
+              onClick={() => setShowToken((s) => !s)}
+              aria-label={showToken ? "Ascunde token" : "Arată token"}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1"
+            >
+              {showToken ? <EyeOff className="h-5 w-5 text-ink/70" /> : <Eye className="h-5 w-5 text-ink/70" />}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="sms-password">
+            Parolă API
+          </label>
+          <div className="relative">
+            <input
+              className="input-base pr-10"
+              id="sms-password"
+              onChange={(event) => setDraft((currentValue) => ({ ...currentValue, password: event.target.value }))}
+              placeholder="Parola API"
+              value={draft.password ?? ""}
+              type={showToken ? "text" : "password"}
+            />
+            <button
+              type="button"
+              onClick={() => setShowToken((s) => !s)}
+              aria-label={showToken ? "Ascunde parola" : "Arată parola"}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1"
+            >
+              {showToken ? <EyeOff className="h-5 w-5 text-ink/70" /> : <Eye className="h-5 w-5 text-ink/70" />}
+            </button>
+          </div>
+        </div>
         <div>
           <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="sms-action-base-path">
             Cale internă pentru linkurile pacientului

@@ -1,8 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AxiosError } from "axios";
 import {
   AlertCircle,
   CalendarDays,
   Clock3,
+  Database,
+  LoaderCircle,
   MessageSquareText,
   Plus,
   RefreshCw,
@@ -14,7 +17,8 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
 import { apiClient } from "../api/client";
-import type { ApiSuccessResponse, PaginatedResponse } from "../shared/types/api";
+import type { ApiErrorResponse, ApiSuccessResponse, PaginatedResponse } from "../shared/types/api";
+import { useToast } from "../shared/ui/toast-provider";
 import { FOLLOW_UP_STATUS_VALUES, type FollowUpStatus } from "../../../backend/src/shared/enums/follow-up-status.enum";
 import type { AppointmentListItem } from "../modules/appointments/appointments.types";
 import { getDoctorSchedules } from "../modules/doctor-schedules/doctor-schedules.api";
@@ -25,6 +29,8 @@ import { MESSAGE_STATUS_VALUES, type MessageStatus } from "../../../backend/src/
 import type { MessageListItem } from "../modules/messages/messages.types";
 import type { PatientListItem } from "../modules/patients/patients.types";
 import { getSpecializationTheme } from "../modules/specializations/components/specialization-theme";
+import { syncDatabase } from "../modules/admin/admin.api";
+import type { SyncDatabaseFailureResponse } from "../modules/admin/admin.types";
 
 interface DashboardActionItem {
   id: string;
@@ -33,6 +39,19 @@ interface DashboardActionItem {
   ctaLabel: string;
   to: string;
   icon: typeof CalendarDays;
+}
+
+interface DashboardKpiCard {
+  title: string;
+  value: string;
+  detail: string;
+  to: string;
+  icon: typeof CalendarDays;
+  cardClassName: string;
+  iconClassName: string;
+  titleClassName: string;
+  valueClassName: string;
+  detailClassName: string;
 }
 
 interface BusyDoctorItem {
@@ -473,6 +492,7 @@ async function loadDashboardData(): Promise<DashboardData> {
 
 export const DashboardPage = (): JSX.Element => {
   const { session } = useAuth();
+  const { showToast, updateToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const now = new Date();
   const agendaDays = getAgendaDaysUntilFriday(now);
@@ -480,6 +500,54 @@ export const DashboardPage = (): JSX.Element => {
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-summary"],
     queryFn: loadDashboardData,
+  });
+  const isAdministrator = session?.user.user_role_label === "Administrator";
+  const syncMutation = useMutation({
+    mutationFn: async () => syncDatabase(),
+    onMutate: () => {
+      const toastId = showToast({
+        variant: "loading",
+        title: "Sincronizăm baza de date",
+        description: "Exportăm datele locale și rulăm pașii de upload și restore pe serverul remote.",
+      });
+
+      return { toastId };
+    },
+    onSuccess: (result, _variables, context) => {
+      if (result.success) {
+        if (context?.toastId !== undefined) {
+          updateToast(context.toastId, {
+            variant: "success",
+            title: "Sincronizarea s-a încheiat",
+            description: `Dump, upload și restore au fost finalizate în ${result.duration_ms} ms.`,
+          });
+        }
+
+        return;
+      }
+
+      if (context?.toastId !== undefined) {
+        updateToast(context.toastId, {
+          variant: "error",
+          title: "Sincronizarea a eșuat",
+          description: `Pasul ${result.failed_step} a eșuat: ${result.message}`,
+        });
+      }
+    },
+    onError: (error: AxiosError<ApiErrorResponse | SyncDatabaseFailureResponse>, _variables, context) => {
+      const responsePayload = error.response?.data;
+      const description = responsePayload !== undefined && "failed_step" in responsePayload
+        ? `Pasul ${responsePayload.failed_step} a eșuat: ${responsePayload.message}`
+        : (responsePayload as ApiErrorResponse | undefined)?.message ?? "Verifică permisiunile și configurarea endpointului de sync.";
+
+      if (context?.toastId !== undefined) {
+        updateToast(context.toastId, {
+          variant: "error",
+          title: "Nu am putut porni sincronizarea",
+          description,
+        });
+      }
+    },
   });
 
   useEffect(() => {
@@ -572,26 +640,73 @@ export const DashboardPage = (): JSX.Element => {
   );
   const filteredNextAppointment =
     filteredTodayAppointments.find((item) => new Date(item.appointment.start_date_time).getTime() >= now.getTime()) ?? null;
-  const kpiCards = [
+  const nextAppointmentRoute = filteredNextAppointment === null
+    ? "/programari/nou_1"
+    : `/programari/${filteredNextAppointment.appointment.appointment_id}`;
+  const kpiCards: DashboardKpiCard[] = [
     {
       title: "Programări azi",
       value: String(filteredTodayAppointments.length),
+      detail:
+        filteredTodayAppointments.length === 0
+          ? "Nu există programări în filtrele active pentru astăzi."
+          : "Deschide agenda de azi și vezi rapid toate sloturile reale.",
+      to: "/programari",
       icon: CalendarDays,
+      cardClassName:
+        "border border-primary/30 bg-gradient-to-br from-primary/85 via-teal-600/85 to-cyan-600/85 text-white shadow-lg shadow-primary/18 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/22",
+      iconClassName: "bg-white/18 text-slate-50 ring-1 ring-white/20",
+      titleClassName: "text-slate-50/88",
+      valueClassName: "text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.10)]",
+      detailClassName: "text-slate-50/90",
     },
     {
-      title: "Următoarea",
+      title: "Următoarea programare",
       value: filteredNextAppointment === null ? "Liber" : formatTime(filteredNextAppointment.appointment.start_date_time),
+      detail:
+        filteredNextAppointment === null
+          ? "Nu există o altă programare astăzi. Poți adăuga una nouă."
+          : `${filteredNextAppointment.appointment.patient_display_name} • ${filteredNextAppointment.appointment.doctor_display_name}`,
+      to: nextAppointmentRoute,
       icon: Clock3,
+      cardClassName:
+        "border border-primary/30 bg-gradient-to-br from-primary via-teal-600 to-cyan-600 text-white shadow-lg shadow-primary/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/25",
+      iconClassName: "bg-white/20 text-slate-50 ring-1 ring-white/20",
+      titleClassName: "text-slate-50/90",
+      valueClassName: "text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.12)]",
+      detailClassName: "text-slate-50/95",
     },
     {
       title: "Pacienți noi",
       value: String(dashboard.newPatientsToday.length),
+      detail:
+        dashboard.newPatientsToday.length === 0
+          ? "Nu au fost înregistrați pacienți noi în intervalul de azi."
+          : "Vezi rapid pacienții adăugați azi și deschide fișele lor.",
+      to: "/pacienti",
       icon: Users,
+      cardClassName:
+        "border border-primary/30 bg-gradient-to-br from-primary/80 via-teal-600/82 to-cyan-600/80 text-white shadow-lg shadow-primary/16 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/20",
+      iconClassName: "bg-white/18 text-slate-50 ring-1 ring-white/20",
+      titleClassName: "text-slate-50/88",
+      valueClassName: "text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.10)]",
+      detailClassName: "text-slate-50/90",
     },
     {
       title: "Urgente",
       value: String(dashboard.queuedMessagesCount + dashboard.activeFollowUpsCount),
+      detail:
+        dashboard.queuedMessagesCount + dashboard.activeFollowUpsCount === 0
+          ? "Nu există alerte active în mesaje sau follow-up-uri."
+          : "Deschide mesajele și reveni­rile care cer atenție imediată.",
+      to: dashboard.queuedMessagesCount > 0 ? "/mesaje" : "/reveniri",
       icon: MessageSquareText,
+      cardClassName:
+        "border border-primary/30 bg-gradient-to-br from-primary/80 via-teal-600/80 to-cyan-600/80 text-white shadow-lg shadow-primary/16 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/20",
+      iconClassName: "bg-white/18 text-slate-50 ring-1 ring-white/20",
+      titleClassName: "text-slate-50/88",
+      valueClassName: "text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.10)]",
+      detailClassName: "text-slate-50/90",
     },
   ];
   const busiestDoctorMax = Math.max(...dashboard.busyDoctors.map((doctor) => doctor.appointmentsCount), 1);
@@ -621,65 +736,84 @@ export const DashboardPage = (): JSX.Element => {
   };
 
   return (
-    <section className="space-y-5">
-      <div className="panel overflow-hidden p-5 md:p-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
+    <section className="space-y-4">
+      <div className="panel overflow-hidden p-4 md:p-5 xl:p-6">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_auto] xl:items-start">
+          <div className="min-w-0 max-w-4xl">
             <span className="badge-soft">Agendă săptămânală</span>
-            <h2 className="mt-3 text-3xl md:text-[2.5rem] md:leading-tight">{greeting}</h2>
-            <p className="mt-2 truncate text-sm text-slate-500 md:text-base">{subtitle}</p>
+            <h2 className="mt-2 text-3xl md:text-[2.35rem] md:leading-tight">{greeting}</h2>
+            <p className="mt-1 text-sm text-slate-500 md:text-base">{subtitle}</p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link className="rounded-full bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/15" to="/programari/nou_1">
+                + Programare nouă
+              </Link>
+              <Link className="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200" to="/pacienti/nou">
+                + Pacient nou
+              </Link>
+              <Link className="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200" to="/programari">
+                Vezi programările
+              </Link>
+              <Link className="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200" to="/pacienti">
+                Vezi pacienții noi
+              </Link>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Link className="button-primary gap-2 px-4 py-3" to="/programari/nou">
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            {isAdministrator ? (
+              <button
+                className="button-secondary gap-2 px-4 py-2.5"
+                disabled={syncMutation.isPending}
+                onClick={() => void syncMutation.mutateAsync()}
+                type="button"
+              >
+                {syncMutation.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                Sync Database
+              </button>
+            ) : null}
+            <Link className="button-primary gap-2 px-4 py-2.5" to="/programari/nou_1">
               <Plus className="h-4 w-4" />
               Adaugă programare
             </Link>
-            <Link className="button-secondary gap-2 px-4 py-3" to="/pacienti/nou">
+            <Link className="button-secondary gap-2 px-4 py-2.5" to="/pacienti/nou">
               <Users className="h-4 w-4" />
               Pacient nou
             </Link>
           </div>
         </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link className="rounded-full bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/15" to="/programari/nou">
-            + Programare nouă
-          </Link>
-          <Link className="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200" to="/pacienti/nou">
-            + Pacient nou
-          </Link>
-          <Link className="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200" to="/programari">
-            Vezi programările
-          </Link>
-          <Link className="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200" to="/pacienti">
-            Vezi pacienții noi
-          </Link>
-        </div>
       </div>
 
-      <div className="panel overflow-hidden p-2 md:p-3">
-        <div className="grid gap-1 md:grid-cols-4">
+      <div className="panel overflow-hidden p-2 md:p-2.5">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {kpiCards.map((card) => {
             const Icon = card.icon;
 
             return (
-              <div className="flex items-center gap-3 rounded-[20px] px-4 py-3" key={card.title}>
-                <div className="rounded-2xl bg-slate-100 p-2.5 text-slate-700">
-                  <Icon className="h-4 w-4" />
+              <Link
+                className={`group flex min-h-[124px] flex-col justify-between rounded-[22px] p-4 transition ${card.cardClassName}`}
+                key={card.title}
+                to={card.to}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${card.titleClassName}`}>{card.title}</p>
+                    <p className={`mt-2 text-2xl font-semibold md:text-[2rem] ${card.valueClassName}`}>{card.value}</p>
+                  </div>
+                  <div className={`rounded-2xl p-2.5 transition group-hover:scale-105 ${card.iconClassName}`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-2xl font-semibold text-ink">{card.value}</p>
-                  <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{card.title}</p>
-                </div>
-              </div>
+
+                <p className={`mt-3 line-clamp-2 text-sm leading-5 ${card.detailClassName}`}>{card.detail}</p>
+              </Link>
             );
           })}
         </div>
       </div>
 
-      <div className="panel p-4 md:p-5">
-        <div className="flex flex-col gap-3">
+      <div className="panel p-3.5 md:p-4">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:items-start">
           <div className="flex flex-wrap gap-2">
             <button
               className={`rounded-full px-3 py-2 text-sm font-semibold transition ${
@@ -716,7 +850,7 @@ export const DashboardPage = (): JSX.Element => {
           </div>
 
           {doctorOptions.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 xl:justify-end">
               {doctorOptions.map((doctor) => {
                 const isActive = doctorFilter === doctor;
 
@@ -741,19 +875,19 @@ export const DashboardPage = (): JSX.Element => {
       </div>
 
       <article className="panel overflow-hidden p-4 md:p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_auto] xl:items-end">
+          <div className="max-w-4xl">
             <span className="badge-soft">Programările pe zile</span>
             <h3 className="mt-2 text-xl font-semibold text-ink">Tablou pe specializări și orele clinicii</h3>
-            <p className="mt-2 text-sm text-slate-500">Poți schimba rapid ziua din coockie-urile de mai jos, iar tabelul se reface exclusiv din programările reale și din programul real al clinicii.</p>
+            <p className="mt-1 text-sm text-slate-500">Poți schimba rapid ziua din cookie-urile de mai jos, iar tabelul se reface exclusiv din programările reale și din programul real al clinicii.</p>
           </div>
 
-          <Link className="button-secondary px-4 py-2 text-sm" to="/programari">
+          <Link className="button-secondary px-4 py-2 text-sm xl:justify-self-end" to="/programari">
             Vezi lista completă
           </Link>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           {agendaDays.map((day) => {
             const dayKey = toDateKey(day);
             const tone = getDayTone(day, now);
@@ -764,7 +898,7 @@ export const DashboardPage = (): JSX.Element => {
 
             return (
               <button
-                className={`rounded-full border px-4 py-2.5 text-left transition ${isActive ? "border-primary/20 bg-primary text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"}`}
+                className={`rounded-[26px] border px-4 py-2 text-left transition ${isActive ? "border-primary/20 bg-primary text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"}`}
                 key={dayKey}
                 onClick={() => setSelectedBoardDayKey(dayKey)}
                 type="button"
@@ -773,7 +907,7 @@ export const DashboardPage = (): JSX.Element => {
                   {tone.label}
                 </span>
                 <span className="mt-1 block text-sm font-semibold">{formatDayNumber(day)}</span>
-                <span className={`mt-1 block text-xs font-medium ${isActive ? "text-white/80" : "text-slate-500"}`}>
+                <span className={`mt-0.5 block text-xs font-medium ${isActive ? "text-white/80" : "text-slate-500"}`}>
                   {appointmentsCount} programări
                 </span>
               </button>

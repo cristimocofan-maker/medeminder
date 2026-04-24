@@ -20,7 +20,6 @@ export interface AuthSession {
 }
 
 export interface AuthLoginRequest {
-  clinic_id: number;
   email: string;
   password: string;
 }

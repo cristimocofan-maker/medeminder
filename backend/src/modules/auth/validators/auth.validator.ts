@@ -1,5 +1,4 @@
 import { FieldNotAllowedException } from "../../../shared/exceptions/field-not-allowed.exception";
-import { InvalidIdException } from "../../../shared/exceptions/invalid-id.exception";
 import { RequiredFieldMissingException } from "../../../shared/exceptions/required-field-missing.exception";
 import { ValidationException } from "../../../shared/exceptions/validation.exception";
 import { getFirstDisallowedKey } from "../../../shared/validators";
@@ -7,19 +6,11 @@ import type { AuthLoginRequestDto } from "../dto/auth-login.request.dto";
 
 export class AuthValidator {
   validateAuthLoginRequest(requestDto: AuthLoginRequestDto): void {
-    const allowedKeys = ["clinic_id", "email", "password"];
+    const allowedKeys = ["email", "password"];
     const extraField = getFirstDisallowedKey(requestDto as unknown as Record<string, unknown>, allowedKeys);
 
     if (extraField !== null) {
       throw new FieldNotAllowedException(undefined, extraField);
-    }
-
-    if (requestDto.clinic_id === undefined || requestDto.clinic_id === null) {
-      throw new RequiredFieldMissingException(undefined, "clinic_id");
-    }
-
-    if (!Number.isInteger(requestDto.clinic_id)) {
-      throw new InvalidIdException(undefined, "clinic_id");
     }
 
     if (requestDto.email === undefined || requestDto.email.trim() === "") {
